@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36" version="29.6.5">
   <diagram name="Oldal-1" id="KrCgbesDXUyNaEpcBiXP">
-    <mxGraphModel dx="3102" dy="1269" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="2495" dy="931" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -873,6 +873,78 @@
           <mxGeometry height="100" relative="1" width="100" as="geometry">
             <mxPoint x="-490" y="120" as="sourcePoint" />
             <mxPoint x="-370" y="60" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-193" edge="1" parent="1" source="w7BTmlmancDktXGb_hRW-184" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;shape=link;" target="w7BTmlmancDktXGb_hRW-58">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="90" y="570" />
+              <mxPoint x="250" y="570" />
+              <mxPoint x="250" y="670" />
+              <mxPoint x="580" y="670" />
+              <mxPoint x="580" y="495" />
+            </Array>
+            <mxPoint x="580" y="500" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-192" edge="1" parent="1" source="w7BTmlmancDktXGb_hRW-35" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;shape=link;strokeColor=light-dark(#000000,#FF0000);" target="w7BTmlmancDktXGb_hRW-183">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-195" connectable="0" parent="1" style="group" value="" vertex="1">
+          <mxGeometry height="140" width="170" x="20" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-182" parent="w7BTmlmancDktXGb_hRW-195" style="rounded=1;whiteSpace=wrap;html=1;" value="" vertex="1">
+          <mxGeometry height="140" width="170" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-183" parent="w7BTmlmancDktXGb_hRW-195" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" value="" vertex="1">
+          <mxGeometry height="10" width="10" x="35" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-184" parent="w7BTmlmancDktXGb_hRW-195" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" value="" vertex="1">
+          <mxGeometry height="10" width="10" x="65" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-185" parent="w7BTmlmancDktXGb_hRW-195" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" value="" vertex="1">
+          <mxGeometry height="10" width="10" x="95" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-186" parent="w7BTmlmancDktXGb_hRW-195" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" value="" vertex="1">
+          <mxGeometry height="10" width="10" x="125" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-187" parent="w7BTmlmancDktXGb_hRW-195" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;horizontal=1;rotation=0;" value="&lt;font style=&quot;font-size: 8px;&quot;&gt;Vcc&lt;/font&gt;" vertex="1">
+          <mxGeometry height="30" width="56" x="12" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-188" parent="w7BTmlmancDktXGb_hRW-195" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;horizontal=1;rotation=0;" value="&lt;font style=&quot;font-size: 8px;&quot;&gt;GND&lt;/font&gt;" vertex="1">
+          <mxGeometry height="30" width="56" x="42" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-189" parent="w7BTmlmancDktXGb_hRW-195" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;horizontal=1;rotation=0;" value="&lt;font style=&quot;font-size: 8px;&quot;&gt;SCL&lt;/font&gt;" vertex="1">
+          <mxGeometry height="30" width="56" x="72" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-190" parent="w7BTmlmancDktXGb_hRW-195" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;horizontal=1;rotation=0;" value="&lt;font style=&quot;font-size: 8px;&quot;&gt;SDA&lt;/font&gt;" vertex="1">
+          <mxGeometry height="30" width="56" x="102" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-191" parent="w7BTmlmancDktXGb_hRW-195" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="D096-12864-I2C-GV-WH&lt;div&gt;128x64 OLED kijelző&lt;/div&gt;" vertex="1">
+          <mxGeometry height="30" width="137" x="16.5" y="70" as="geometry" />
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-197" edge="1" parent="1" source="w7BTmlmancDktXGb_hRW-185" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=light-dark(#000000,#009999);shape=link;" target="w7BTmlmancDktXGb_hRW-33">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="120" y="465" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-198" connectable="0" parent="w7BTmlmancDktXGb_hRW-197" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Serial Clock" vertex="1">
+          <mxGeometry relative="1" x="0.5732" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-199" edge="1" parent="1" source="w7BTmlmancDktXGb_hRW-186" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=light-dark(#000000,#00CCCC);shape=link;" target="w7BTmlmancDktXGb_hRW-34">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="150" y="495" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="w7BTmlmancDktXGb_hRW-200" connectable="0" parent="w7BTmlmancDktXGb_hRW-199" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Serial Data" vertex="1">
+          <mxGeometry relative="1" x="0.494" y="1" as="geometry">
+            <mxPoint as="offset" />
           </mxGeometry>
         </mxCell>
       </root>

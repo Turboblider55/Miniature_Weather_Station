@@ -1,0 +1,21 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.customExtraPaths": "C:\\Users\\josem\\.espressif\\tools\\xtensa-esp-elf-gdb\\11.2_20220823\\xtensa-esp-elf-gdb\\bin;C:\\Users\\josem\\.espressif\\tools\\riscv32-esp-elf-gdb\\11.2_20220823\\riscv32-esp-elf-gdb\\bin;C:\\Users\\josem\\.espressif\\tools\\xtensa-esp32-elf\\esp-2022r1-11.2.0\\xtensa-esp32-elf\\bin;C:\\Users\\josem\\.espressif\\tools\\xtensa-esp32s2-elf\\esp-2022r1-11.2.0\\xtensa-esp32s2-elf\\bin;C:\\Users\\josem\\.espressif\\tools\\xtensa-esp32s3-elf\\esp-2022r1-11.2.0\\xtensa-esp32s3-elf\\bin;C:\\Users\\josem\\.espressif\\tools\\riscv32-esp-elf\\esp-2022r1-11.2.0\\riscv32-esp-elf\\bin;C:\\Users\\josem\\.espressif\\tools\\esp32ulp-elf\\2.35_20220830\\esp32ulp-elf\\bin;C:\\Users\\josem\\.espressif\\tools\\cmake\\3.24.0\\bin;C:\\Users\\josem\\.espressif\\tools\\openocd-esp32\\v0.11.0-esp32-20221026\\openocd-esp32\\bin;C:\\Users\\josem\\.espressif\\tools\\ninja\\1.10.2;C:\\Users\\josem\\.espressif\\tools\\idf-exe\\1.0.3;C:\\Users\\josem\\.espressif\\tools\\ccache\\4.6.2\\ccache-4.6.2-windows-x86_64;C:\\Users\\josem\\.espressif\\tools\\dfu-util\\0.9\\dfu-util-0.9-win64", 
+  "idf.openOcdConfigs": [
+    "interface/ftdi/esp_ftdi.cfg",
+    "target/esp32s2.cfg"
+  ],
+  "idf.portWin": "COM3",
+  "idf.currentSetup": "C:/Espressif/frameworks/esp-idf-v5.5.3/",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32s2"
+  },
+  "clangd.path": "C:\\Espressif\\tools\\esp-clang\\esp-19.1.2_20250312\\esp-clang\\bin\\clangd.exe",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=e:\\Egyetem\\ProjektFeladat\\EPS32_S2_MINI\\blink\\build"
+  ],
+  "idf.flashType": "UART",
+  "C_Cpp.errorSquiggles": "disabled"
+}

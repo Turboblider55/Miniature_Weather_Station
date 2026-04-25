@@ -18,6 +18,7 @@
 #include "display.h"
 #include "ens160_aht21.h"
 #include "esp_system.h"
+#include "bmp280.h"
 
 //TinyUSB includes for USB CDC test (USB Serial) 
 #include "tinyusb.h"
@@ -27,6 +28,7 @@ static const char *TAG = "example";
 
 static ens160_aht21_handle_t ens160_aht21_handle;
 ssd1306_handle_t ssd1306_handle;
+bmp280_handle_t bmp280_handle;
 
 /* Use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
    or you can edit the following line and set a number here.
@@ -146,6 +148,17 @@ void app_main(void)
     i2c_master_bus_handle_t i2c_bus_handle_env;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_env, &i2c_bus_handle_env));
 
+    
+    // Initialize BMP280
+    //
+    esp_err_t bmp_init = bmp280_init(&bmp280_handle, i2c_bus_handle_env);
+    bool bmp_available = (bmp_init == ESP_OK);
+
+    if (!bmp_available) {
+        ESP_LOGE(TAG, "BMP280 initialization failed");
+    }
+
+
     // Initialize ENS160 + AHT21 sensor module
     esp_err_t env_init_result = ens160_aht21_init(&ens160_aht21_handle, i2c_bus_handle_env);
     bool env_available = (env_init_result == ESP_OK);
@@ -172,12 +185,27 @@ void app_main(void)
         if (loop_count % 20 == 0) {
             if (env_available) {
                 float temperature, humidity;
-                uint16_t tvoc, eco2;
-                if (ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity, &tvoc, &eco2) == ESP_OK) {
-                    display_sensor_data_pages(temperature, humidity, tvoc, eco2);
+                float pressure, altitude;
+                //uint16_t tvoc, eco2;
+                // if (ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity, &tvoc, &eco2) == ESP_OK) {
+                
+                   if (ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity) == ESP_OK) {
+                    //display_sensor_data_pages(temperature, humidity, tvoc, eco2);
 
-                    ESP_LOGI(TAG, "Temperature: %.2f C, Humidity: %.2f %%, TVOC: %d ppb, eCO2: %d ppm",
-                             temperature, humidity, tvoc, eco2);
+                    // If BMP280 is available, read pressure and altitude and pass to display function
+
+                    bmp280_read_compensated_data(&bmp280_handle, &temperature, &pressure, &altitude);
+
+                    display_sensor_data_pages(
+                        temperature,
+                        humidity,
+                        pressure,
+                        altitude
+                    );
+
+                    ESP_LOGI(TAG, "Temperature: %.2f C, Humidity: %.2f %%, Pressure: %.2f hPa, Altitude: %.2f m",
+                             temperature, humidity, pressure, altitude);
+
                 } else {
                     ssd1306_clear_display(ssd1306_handle, false);
                     ssd1306_display_text(ssd1306_handle, 0, "ENS160/AHT21", false);

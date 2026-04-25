@@ -84,6 +84,6 @@ direct_dependencies:
 - espressif/led_strip
 - fasani/adafruit_gfx
 - k0i05/esp_ssd1306
-manifest_hash: f1aac585ab907a8ae879f3927e09ec47076895deaf1b60ca0ea2f9d356bac839
+manifest_hash: 3b54d11021a4366ebda39f27cb86b5bced318db1f46991a1c4456e2f1d0e23b1
 target: esp32s2
 version: 2.0.0

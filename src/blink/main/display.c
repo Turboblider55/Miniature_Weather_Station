@@ -418,24 +418,67 @@ void display_eco2_page(uint16_t eco2)
     ssd1306_display_pages(ssd1306_handle);
 }
 
-// Main display function that cycles through pages
-void display_sensor_data_pages(float temperature, float humidity, uint16_t tvoc, uint16_t eco2)
-{
-    switch (current_page) {
-        case 0:
-            display_temperature_page(temperature);
-            break;
-        case 1:
-            display_humidity_page(humidity);
-            break;
-        case 2:
-            display_tvoc_page(tvoc);
-            break;
-        case 3:
-            display_eco2_page(eco2);
-            break;
-    }
+// // Main display function that cycles through pages
+// void display_sensor_data_pages(float temperature, float humidity, uint16_t tvoc, uint16_t eco2)
+// {
+//     switch (current_page) {
+//         case 0:
+//             display_temperature_page(temperature);
+//             break;
+//         case 1:
+//             display_humidity_page(humidity);
+//             break;
+//         case 2:
+//             display_tvoc_page(tvoc);
+//             break;
+//         case 3:
+//             display_eco2_page(eco2);
+//             break;
+//     }
 
-    // Cycle to next page
-    current_page = (current_page + 1) % TOTAL_PAGES;
-}
+//     // Cycle to next page
+//     current_page = (current_page + 1) % TOTAL_PAGES;
+// }
+
+
+void display_sensor_data_pages(
+    float temperature,
+    float humidity,
+    float pressure,
+    float altitude)
+    {
+        switch (current_page) {
+            case 0:
+                // Temperature page (AHT21 or BMP280 temperature)
+                display_temperature_page(temperature);
+                break;
+
+            case 1:
+                // Humidity page (AHT21)
+                display_humidity_page(humidity);
+                break;
+
+            case 2:
+                // Pressure page (BMP280)
+                display_pressure_page(pressure);
+                break;
+
+            case 3:
+                // Altitude page (BMP280)
+                display_altitude_page(altitude);
+                break;
+
+            /*
+            // ENS160 PAGES DISABLED
+            case 2:
+                display_tvoc_page(tvoc);
+                break;
+            case 3:
+                display_eco2_page(eco2);
+                break;
+            */
+        }
+
+        // Cycle to next page
+        current_page = (current_page + 1) % TOTAL_PAGES;
+    }

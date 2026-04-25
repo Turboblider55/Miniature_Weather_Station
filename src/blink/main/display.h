@@ -23,6 +23,12 @@ void display_temperature_page(float temperature);
 void display_humidity_page(float humidity);
 void display_tvoc_page(uint16_t tvoc);
 void display_eco2_page(uint16_t eco2);
-void display_sensor_data_pages(float temperature, float humidity, uint16_t tvoc, uint16_t eco2);
+//void display_sensor_data_pages(float temperature, float humidity, uint16_t tvoc, uint16_t eco2);
+void display_sensor_data_pages(float temperature, float humidity, float pressure, float altitude);
+
+
+void display_pressure_page(float pressure);
+void display_altitude_page(float altitude);
+
 
 #endif // DISPLAY_H

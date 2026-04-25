@@ -50,6 +50,8 @@ typedef struct {
 esp_err_t ens160_aht21_init(ens160_aht21_handle_t *handle, i2c_master_bus_handle_t bus_handle);
 esp_err_t ens160_read_data(ens160_aht21_handle_t *handle, uint16_t *tvoc, uint16_t *eco2);
 esp_err_t aht21_read_data(ens160_aht21_handle_t *handle, float *temperature, float *humidity);
-esp_err_t ens160_aht21_read_all_data(ens160_aht21_handle_t *handle, float *temperature, float *humidity, uint16_t *tvoc, uint16_t *eco2);
+//esp_err_t ens160_aht21_read_all_data(ens160_aht21_handle_t *handle, float *temperature, float *humidity, uint16_t *tvoc, uint16_t *eco2);
+// Overloaded version that returns dummy values for ENS160 since it is disabled
+esp_err_t ens160_aht21_read_all_data(ens160_aht21_handle_t *handle, float *temperature, float *humidity);
 
 #endif // ENS160_AHT21_H

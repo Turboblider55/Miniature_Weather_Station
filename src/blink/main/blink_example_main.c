@@ -135,41 +135,6 @@ void app_main(void)
     ssd1306_clear_display(ssd1306_handle, false);
     ssd1306_display_text(ssd1306_handle, 0, "OLED Ready", false);
 
-    // Initialize I2C bus for ENS160 + AHT21 (I2C_NUM_1 on pins 8/9)
-    // SDA - GPIO8, SCL - GPIO9
-    i2c_master_bus_config_t i2c_bus_config_env = {
-        .i2c_port = I2C_NUM_1,
-        .sda_io_num = 8,
-        .scl_io_num = 9,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = 7,
-        .intr_priority = 0,
-    };
-    i2c_master_bus_handle_t i2c_bus_handle_env;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_env, &i2c_bus_handle_env));
-
-    
-    // Initialize BMP280
-    //
-    esp_err_t bmp_init = bmp280_init(&bmp280_handle, i2c_bus_handle_env);
-    bool bmp_available = (bmp_init == ESP_OK);
-
-    if (!bmp_available) {
-        ESP_LOGE(TAG, "BMP280 initialization failed");
-    }
-
-
-    // Initialize ENS160 + AHT21 sensor module
-    esp_err_t env_init_result = ens160_aht21_init(&ens160_aht21_handle, i2c_bus_handle_env);
-    bool env_available = (env_init_result == ESP_OK);
-    if (!env_available) {
-        ESP_LOGE(TAG, "ENS160/AHT21 initialization failed: %s", esp_err_to_name(env_init_result));
-        ssd1306_clear_display(ssd1306_handle, false);
-        ssd1306_display_text(ssd1306_handle, 0, "ENS160/AHT21", false);
-        ssd1306_display_text(ssd1306_handle, 1, "Init Failed", false);
-        ssd1306_display_text(ssd1306_handle, 2, "Check wiring", false);
-        ssd1306_display_text(ssd1306_handle, 3, "ADD=3V3, CS=3V3", false);
-    }
 
     // Variable to track display update frequency
     int loop_count = 0;
@@ -183,41 +148,90 @@ void app_main(void)
 
         // Read ENS160 + AHT21 sensor data and update display every 20 iterations (2 seconds)
         if (loop_count % 20 == 0) {
-            if (env_available) {
                 float temperature, humidity;
                 float pressure, altitude;
                 //uint16_t tvoc, eco2;
                 // if (ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity, &tvoc, &eco2) == ESP_OK) {
                 
-                   if (ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity) == ESP_OK) {
-                    //display_sensor_data_pages(temperature, humidity, tvoc, eco2);
+                // Initialize I2C bus for ENS160 + AHT21 (I2C_NUM_1 on pins 8/9)
+                // SDA - GPIO8, SCL - GPIO9
+                i2c_master_bus_config_t i2c_bus_config_env = {
+                    .i2c_port = I2C_NUM_1,
+                    .sda_io_num = 8,
+                    .scl_io_num = 9,
+                    .clk_source = I2C_CLK_SRC_DEFAULT,
+                    .glitch_ignore_cnt = 7,
+                    .intr_priority = 0,
+                };
+                i2c_master_bus_handle_t i2c_bus_handle_env;
+                ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_env, &i2c_bus_handle_env));
 
-                    // If BMP280 is available, read pressure and altitude and pass to display function
-
-                    bmp280_read_compensated_data(&bmp280_handle, &temperature, &pressure, &altitude);
-
-                    display_sensor_data_pages(
-                        temperature,
-                        humidity,
-                        pressure,
-                        altitude
-                    );
-
-                    ESP_LOGI(TAG, "Temperature: %.2f C, Humidity: %.2f %%, Pressure: %.2f hPa, Altitude: %.2f m",
-                             temperature, humidity, pressure, altitude);
-
-                } else {
+                // Initialize ENS160 + AHT21 sensor module
+                esp_err_t env_init_result = ens160_aht21_init(&ens160_aht21_handle, i2c_bus_handle_env);
+                bool env_available = (env_init_result == ESP_OK);
+                if (!env_available) {
+                    ESP_LOGE(TAG, "ENS160/AHT21 initialization failed: %s", esp_err_to_name(env_init_result));
                     ssd1306_clear_display(ssd1306_handle, false);
                     ssd1306_display_text(ssd1306_handle, 0, "ENS160/AHT21", false);
-                    ssd1306_display_text(ssd1306_handle, 1, "Read Failed", false);
-                    ESP_LOGE(TAG, "Failed to read ENS160/AHT21 data");
+                    ssd1306_display_text(ssd1306_handle, 1, "Init Failed", false);
+                    ssd1306_display_text(ssd1306_handle, 2, "Check wiring", false);
+                    ssd1306_display_text(ssd1306_handle, 3, "ADD=3V3, CS=3V3", false);
                 }
-            } else {
-                ssd1306_clear_display(ssd1306_handle, false);
-                ssd1306_display_text(ssd1306_handle, 0, "ENS160/AHT21", false);
-                ssd1306_display_text(ssd1306_handle, 1, "Not Available", false);
-            }
-        }
+
+                if (!env_available) {
+                    ssd1306_clear_display(ssd1306_handle, false);
+                    ssd1306_display_text(ssd1306_handle, 0, "ENS160/AHT21", false);
+                    ssd1306_display_text(ssd1306_handle, 1, "Not Available", false);
+                }
+
+                if (ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity) == ESP_OK) {
+                //display_sensor_data_pages(temperature, humidity, tvoc, eco2);
+                i2c_master_bus_rm_device(ens160_aht21_handle.aht21_dev_handle); // Remove AHT21 device from bus before reinitializing for BMP280
+                //i2c_master_bus_reset(i2c_bus_handle_env); // Reset the bus to clear any residual state from ENS160/AHT21
+                i2c_del_master_bus(i2c_bus_handle_env); // Clean up the bus handle before reinitializing for BMP280 
+                gpio_reset_pin(8); // Reset SDA pin to clear any residual state from ENS160/AHT21
+                gpio_reset_pin(9); // Reset SCL pin to clear any residual state from ENS160/AHT21
+                // If BMP280 is available, read pressure and altitude and pass to display function
+                // Initialize I2C bus for BMP280 (I2C_NUM_1 on pins 3/5) - REUSED from ENS160/AHT21 since they are on the same bus
+                i2c_master_bus_config_t i2c_bus_config_bmp = {
+                    .i2c_port = I2C_NUM_1,
+                    .sda_io_num = 5,
+                    .scl_io_num = 3,
+                    .clk_source = I2C_CLK_SRC_DEFAULT,
+                    .glitch_ignore_cnt = 7,
+                    .intr_priority = 0,
+                };
+                i2c_master_bus_handle_t i2c_bus_handle_bmp;
+                ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_bmp, &i2c_bus_handle_bmp));
+                
+                vTaskDelay(pdMS_TO_TICKS(100)); // Short delay to ensure bus is ready before BMP280 initialization
+
+                // Initialize BMP280
+                //
+                esp_err_t bmp_init = bmp280_init(&bmp280_handle, i2c_bus_handle_bmp);
+                bool bmp_available = (bmp_init == ESP_OK);
+
+                if (!bmp_available) {
+                    ESP_LOGE(TAG, "BMP280 initialization failed");
+                }
+
+                bmp280_read_compensated_data(&bmp280_handle, &temperature, &pressure, &altitude);
+
+                display_sensor_data_pages(
+                    temperature,
+                    humidity,
+                    pressure,
+                    altitude
+                );
+
+                ESP_LOGI(TAG, "Temperature: %.2f C, Humidity: %.2f %%, Pressure: %.2f hPa, Altitude: %.2f m",
+                            temperature, humidity, pressure, altitude);
+
+                i2c_master_bus_rm_device(bmp280_handle.dev_handle); // Remove BMP280 device from bus after reading
+                i2c_del_master_bus(i2c_bus_handle_bmp); // Clean up the bus handle after BMP280
+                gpio_reset_pin(3); // Reset SDA pin after BMP280
+                gpio_reset_pin(5); // Reset SCL pin after BMP280
+                }
 
         //This drawing function takes a long time to execute, so it is placed after the LED state change and before the delay.
         //How could i optimize this? I want to draw the circles faster, but i don't want to change the LED state change and delay order.
@@ -231,6 +245,9 @@ void app_main(void)
         // ssd1306_display_circle(ssd1306_handle, 64, 32, 4, false);
         // ssd1306_draw_buffer(ssd1306_handle);
 
+
+        }
+        
         loop_count++;
         vTaskDelay(CONFIG_BLINK_PERIOD / portTICK_PERIOD_MS);
     }

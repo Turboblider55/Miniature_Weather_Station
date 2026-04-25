@@ -21,6 +21,9 @@ esp_err_t bmp280_init(bmp280_handle_t *handle, i2c_master_bus_handle_t bus_handl
         ESP_LOGE(TAG, "Failed to add BMP280 device to I2C bus: %s", esp_err_to_name(ret));
         return ret;
     }
+    else {
+        ESP_LOGI(TAG, "BMP280 device added to I2C bus at address 0x%02X", BMP280_I2C_ADDR);
+    }
 
     // Read and verify device ID
     uint8_t device_id;

@@ -1,2 +1,3 @@
-idf_component_register(SRCS "ens160_aht21.c" "bmp280.c" "display.c" "blink_example_main.c"
-                       INCLUDE_DIRS ".")
+idf_component_register(SRCS "wifi_manager.c" "ens160_aht21.c" "bmp280.c" "display.c" "blink_example_main.c"
+                       INCLUDE_DIRS "."
+                       REQUIRES esp_wifi esp_timer nvs_flash)

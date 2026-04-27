@@ -59,11 +59,11 @@ esp_err_t bmp280_init(bmp280_handle_t *handle, i2c_master_bus_handle_t bus_handl
     }
 
     // Debug: Log calibration data
-    ESP_LOGI(TAG, "BMP280 Calib: T1=%u T2=%d T3=%d P1=%u P2=%d P3=%d P4=%d P5=%d P6=%d P7=%d P8=%d P9=%d",
-             handle->calib.T1, handle->calib.T2, handle->calib.T3,
-             handle->calib.P1, handle->calib.P2, handle->calib.P3,
-             handle->calib.P4, handle->calib.P5, handle->calib.P6,
-             handle->calib.P7, handle->calib.P8, handle->calib.P9);
+    // ESP_LOGI(TAG, "BMP280 Calib: T1=%u T2=%d T3=%d P1=%u P2=%d P3=%d P4=%d P5=%d P6=%d P7=%d P8=%d P9=%d",
+    //          handle->calib.T1, handle->calib.T2, handle->calib.T3,
+    //          handle->calib.P1, handle->calib.P2, handle->calib.P3,
+    //          handle->calib.P4, handle->calib.P5, handle->calib.P6,
+    //          handle->calib.P7, handle->calib.P8, handle->calib.P9);
 
     // Configure BMP280: Normal mode, OSR settings
     // ctrl_meas: osrs_t=101 (16x), osrs_p=101 (16x), mode=11 (normal)

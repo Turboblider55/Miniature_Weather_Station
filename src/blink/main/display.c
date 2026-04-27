@@ -2,10 +2,11 @@
 #include <string.h>
 #include <ssd1306.h>
 #include <math.h>
+#include "wifi_manager.h"
 
 // Global variable to track current display page
 int current_page = 0;
-const int TOTAL_PAGES = 4;
+const int TOTAL_PAGES = 6;
 
 // Small 6x6 font bitmaps for numbers 0-9 (6 pixels wide, 6 pixels high)
 // Bit 5 = leftmost pixel, bit 0 = rightmost pixel
@@ -294,12 +295,19 @@ void display_humidity_page(float humidity)
     // Draw water drop illustration on the right side
     int drop_x = 75;  // Center of drop
     int drop_y = 35;  // Center vertically
+    int Rad = 8;
 
     // Water drop shape
-    ssd1306_set_circle(ssd1306_handle, drop_x, drop_y + 8, 8, false);  // Bottom circle
-    ssd1306_set_line(ssd1306_handle, drop_x - 8, drop_y + 8, drop_x - 4, drop_y - 5, false);  // Left curve
-    ssd1306_set_line(ssd1306_handle, drop_x + 8, drop_y + 8, drop_x + 4, drop_y - 5, false);  // Right curve
-    ssd1306_set_line(ssd1306_handle, drop_x - 4, drop_y - 5, drop_x + 4, drop_y - 5, false);  // Top
+    ssd1306_set_circle(ssd1306_handle, drop_x, drop_y + Rad, Rad, false);  // Bottom circle
+    //Clear top half of the circle to create drop shape
+    for (int y = drop_y; y < drop_y + 8; y++) {
+        ssd1306_set_line(ssd1306_handle, drop_x - Rad, y, drop_x + Rad, y, true);
+    }
+    ssd1306_set_rectangle(ssd1306_handle, drop_x - Rad, drop_y - Rad, 2 * Rad, 2 * Rad , true); // Clear top of the circle to create drop shape
+    
+    ssd1306_set_line(ssd1306_handle, drop_x - Rad, drop_y + Rad, drop_x , drop_y - Rad, false);  // Left curve
+    ssd1306_set_line(ssd1306_handle, drop_x + Rad, drop_y + Rad, drop_x , drop_y - Rad, false);  // Right curve
+    //ssd1306_set_line(ssd1306_handle, drop_x - 4, drop_y - 5, drop_x + 4, drop_y - 5, false);  // Top
 
     // Fill drop based on humidity level
     int fill_levels = (int)(humidity / 10.0f);  // 0-10 levels
@@ -307,16 +315,25 @@ void display_humidity_page(float humidity)
     if (fill_levels < 0) fill_levels = 0;
 
     for (int i = 0; i < fill_levels; i++) {
-        int y = drop_y + 8 - i * 2;
-        if (y > drop_y - 5) {
-            ssd1306_set_line(ssd1306_handle, drop_x - 6 + i, y, drop_x + 6 - i, y, false);
+        int y = drop_y + (Rad - 1) * 2 - i * 2;
+        if (y > drop_y + Rad) {
+            ssd1306_set_line(ssd1306_handle, drop_x - (Rad)/2 - i, y, drop_x + (Rad)/2 + i, y, false);
+        }
+        else if(y >= (drop_y + Rad - 1)  && y <= (drop_y + Rad + 1)) {
+            ssd1306_set_line(ssd1306_handle, drop_x - (Rad - 2) , y, drop_x + (Rad - 2) , y, false);
+        }
+        else {
+            ssd1306_set_line(ssd1306_handle, drop_x - (Rad)/2 + (i - Rad / 2 - 1) , y, drop_x + (Rad)/2 - (i - Rad / 2 - 1) , y, false);
         }
     }
 
     // Humidity scale labels
-    display_small_text(ssd1306_handle, "100%", 85, 16);  // Top
-    display_small_text(ssd1306_handle, "50%", 85, 32);   // Middle
-    display_small_text(ssd1306_handle, "0%", 85, 48);    // Bottom
+    display_small_text(ssd1306_handle, "100%", 95, 25);  // Top
+    ssd1306_set_line(ssd1306_handle, drop_x + 8, 27, 93, 27, false); // Top scale line
+    display_small_text(ssd1306_handle, "50%", 95, 37);   // Middle
+    ssd1306_set_line(ssd1306_handle, drop_x + Rad + 5, 42, 93, 39, false); // Middle scale line
+    display_small_text(ssd1306_handle, "0%", 95, 50);    // Bottom
+    ssd1306_set_line(ssd1306_handle, drop_x + 8, 52, 93, 52, false); // Bottom scale line
 
     // Display humidity value and title
     ssd1306_display_text(ssd1306_handle, 0, "HUMIDITY", false);
@@ -440,6 +457,103 @@ void display_eco2_page(uint16_t eco2)
 //     current_page = (current_page + 1) % TOTAL_PAGES;
 // }
 
+void display_wifi_connecting_page(
+    const char *ssid,
+    int attempt,
+    int max_attempts)
+{
+    ssd1306_clear_display(ssd1306_handle, false);
+
+    ssd1306_display_text(
+        ssd1306_handle, 0,
+        "WIFI CONNECTING", false);
+
+    char line1[32];
+    snprintf(line1, sizeof(line1),
+             "SSID: %s", ssid);
+    ssd1306_display_text(
+        ssd1306_handle, 2,
+        line1, false);
+
+    char line2[32];
+    snprintf(line2, sizeof(line2),
+             "Attempt %d / %d",
+             attempt, max_attempts);
+    ssd1306_display_text(
+        ssd1306_handle, 4,
+        line2, false);
+
+    // Simple animated dots
+    int dots = attempt % 4;
+    char anim[8] = ".";
+    for (int i = 0; i < dots; i++) strcat(anim, ".");
+    ssd1306_display_text(
+        ssd1306_handle, 6,
+        anim, false);
+
+    ssd1306_display_pages(ssd1306_handle);
+}
+
+// Helper function to convert WiFi RSSI to signal bars (0-3)
+static int wifi_rssi_to_bars(int rssi)
+{
+    if (rssi > -55) return 3;
+    if (rssi > -70) return 2;
+    if (rssi > -85) return 1;
+    return 0;
+}
+
+// Function to draw WiFi signal strength icon based on RSSI bars
+static void draw_wifi_icon(int x, int y, int bars)
+{
+    //Instead of drawing traditional Wifi arcs, we use rectangles to represent signal strength for better visibility on small display
+
+    // Draw signal strength bars (3 bars total)
+    ssd1306_set_rectangle(ssd1306_handle, x , y - 5, 2, 5, false); 
+    ssd1306_set_rectangle(ssd1306_handle, x + 5, y - 10, 2, 10, false); 
+    ssd1306_set_rectangle(ssd1306_handle, x + 10, y - 15, 2, 15, false);
+
+    if (bars >= 1)
+        //ssd1306_set_circle(ssd1306_handle, x, y, 2, false);
+        ssd1306_set_line(ssd1306_handle, x + 1, y - 5, x + 1, y, false); // Small bar for 1 bar signal
+    if (bars >= 2)
+        //ssd1306_set_circle(ssd1306_handle, x, y, 5, false);
+        ssd1306_set_line(ssd1306_handle, x + 6, y - 10, x + 6, y, false); // Medium bar for 2 bars signal
+    if (bars >= 3)
+        //ssd1306_set_circle(ssd1306_handle, x, y, 8, false);
+        ssd1306_set_line(ssd1306_handle, x + 11, y - 15, x + 11, y, false); // Large bar for 3 bars signal
+}
+
+// Function to display WiFi connected page with SSID and signal strength
+void display_wifi_connected_page(
+    const char *ssid,
+    int rssi)
+{
+    ssd1306_clear_display(ssd1306_handle, false);
+
+    ssd1306_display_text(
+        ssd1306_handle, 0,
+        "WIFI CONNECTED", false);
+
+    char line1[32];
+    snprintf(line1, sizeof(line1),
+             "SSID: %s", ssid);
+    ssd1306_display_text(
+        ssd1306_handle, 2,
+        line1, false);
+
+    int bars = wifi_rssi_to_bars(rssi);
+    draw_wifi_icon(96, 45, bars);
+
+    char line2[16];
+    snprintf(line2, sizeof(line2),
+             "Signal: %d/3", bars);
+    ssd1306_display_text(
+        ssd1306_handle, 5,
+        line2, false);
+
+    ssd1306_display_pages(ssd1306_handle);
+}
 
 void display_sensor_data_pages(
     float temperature,
@@ -466,6 +580,23 @@ void display_sensor_data_pages(
             case 3:
                 // Altitude page (BMP280)
                 display_altitude_page(altitude);
+                break;
+
+            case 4:
+                if (!wifi_manager_is_connected()) {
+                    display_wifi_connecting_page(
+                        (char*)wifi_manager_get_ssid(),
+                        wifi_manager_get_retry_count(),
+                        wifi_manager_get_max_retry());
+                }
+                break;
+
+            case 5:
+                if (wifi_manager_is_connected()) {
+                    display_wifi_connected_page(
+                        (char*)wifi_manager_get_ssid(),
+                        wifi_manager_get_rssi());
+                }
                 break;
 
             /*

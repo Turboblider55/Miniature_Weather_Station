@@ -19,6 +19,7 @@
 #include "ens160_aht21.h"
 #include "esp_system.h"
 #include "bmp280.h"
+#include "wifi_manager.h"
 
 //TinyUSB includes for USB CDC test (USB Serial) 
 #include "tinyusb.h"
@@ -135,6 +136,19 @@ void app_main(void)
     ssd1306_clear_display(ssd1306_handle, false);
     ssd1306_display_text(ssd1306_handle, 0, "OLED Ready", false);
 
+    // Initialize WiFi and wait for connection
+    wifi_manager_init();
+    // Block until WiFi is connected (optional, can run in offline mode if connection fails)
+    wifi_manager_wait_connected();
+
+    // Display network status
+    if (wifi_manager_is_connected()) {
+        ESP_LOGI(TAG, "Network features enabled");
+    } else {
+        ESP_LOGW(TAG, "Running in offline mode");
+    }
+
+
 
     // Variable to track display update frequency
     int loop_count = 0;
@@ -249,6 +263,6 @@ void app_main(void)
         }
         
         loop_count++;
-        vTaskDelay(CONFIG_BLINK_PERIOD / portTICK_PERIOD_MS);
+        vTaskDelay((CONFIG_BLINK_PERIOD / portTICK_PERIOD_MS ) / 2); // Delay for half the blink period to achieve a full on-off cycle
     }
 }

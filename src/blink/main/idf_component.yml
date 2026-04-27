@@ -2,4 +2,7 @@ dependencies:
   espressif/led_strip: ^3.0.0
   fasani/adafruit_gfx: ^1.7.8
   espressif/esp_tinyusb: ^2.1.1
+  #two ssdh1306 libraries are available, the original one is no longer maintained, so I switched to a fork that has more recent updates and bug fixes. The API is mostly compatible, but some adjustments were needed in the display.c file to accommodate changes in the circle drawing function and line drawing logic for filling the drop shape.
+  #espressif/ssd1306: ^1.0.5~1
   k0i05/esp_ssd1306: ^1.2.7
+

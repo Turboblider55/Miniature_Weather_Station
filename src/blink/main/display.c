@@ -3,10 +3,12 @@
 #include <ssd1306.h>
 #include <math.h>
 #include "wifi_manager.h"
+#include <time.h>
+#include "time_manager.h"
 
 // Global variable to track current display page
 int current_page = 0;
-const int TOTAL_PAGES = 6;
+const int TOTAL_PAGES = 7;
 
 // Small 6x6 font bitmaps for numbers 0-9 (6 pixels wide, 6 pixels high)
 // Bit 5 = leftmost pixel, bit 0 = rightmost pixel
@@ -555,6 +557,71 @@ void display_wifi_connected_page(
     ssd1306_display_pages(ssd1306_handle);
 }
 
+// Function to display time and date page with large time and date
+void display_time_date_page(void)
+{
+    ssd1306_clear_display(ssd1306_handle, false);
+
+    int64_t timestamp;
+    if (!time_manager_get_timestamp(&timestamp)) {
+        // Time not available yet
+        ssd1306_display_text(
+            ssd1306_handle, 2,
+            "TIME NOT READY", false);
+        ssd1306_display_text(
+            ssd1306_handle, 4,
+            "WAITING FOR NTP", false);
+        ssd1306_display_pages(ssd1306_handle);
+        return;
+    }
+
+    time_t now = (time_t)timestamp;
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
+
+    // ---- Large time (HH:MM) ----
+    char time_str[8];
+    strftime(time_str, sizeof(time_str), "%H:%M", &timeinfo);
+
+    // Draw large time manually using existing text function
+    ssd1306_display_text(ssd1306_handle, 0, time_str, false);
+
+    // ---- Day name ----
+    static const char *days[] = {
+        "Sunday", "Monday", "Tuesday",
+        "Wednesday", "Thursday", "Friday", "Saturday"
+    };
+
+    ssd1306_display_text(
+        ssd1306_handle, 2,
+        days[timeinfo.tm_wday], false);
+
+    // ---- Date (DD/MM/YYYY) ----
+    char date_str[24];
+    strftime(date_str, sizeof(date_str), "%d/%m/%Y", &timeinfo);
+
+    ssd1306_display_text(
+        ssd1306_handle, 4,
+        date_str, false);
+
+    // Optional subtle clock icon (simple)
+    ssd1306_set_circle(ssd1306_handle, 110, 12, 6, false);
+    ssd1306_set_line(
+        ssd1306_handle,
+        110, 12,
+        110, 8,
+        false
+    );
+    ssd1306_set_line(
+        ssd1306_handle,
+        110, 12,
+        113, 12,
+        false
+    );
+
+    ssd1306_display_pages(ssd1306_handle);
+}
+
 void display_sensor_data_pages(
     float temperature,
     float humidity,
@@ -563,26 +630,30 @@ void display_sensor_data_pages(
     {
         switch (current_page) {
             case 0:
+                // Time and date page
+                display_time_date_page();
+                break;
+            case 1:
                 // Temperature page (AHT21 or BMP280 temperature)
                 display_temperature_page(temperature);
                 break;
 
-            case 1:
+            case 2:
                 // Humidity page (AHT21)
                 display_humidity_page(humidity);
                 break;
 
-            case 2:
+            case 3:
                 // Pressure page (BMP280)
                 display_pressure_page(pressure);
                 break;
 
-            case 3:
+            case 4:
                 // Altitude page (BMP280)
                 display_altitude_page(altitude);
                 break;
 
-            case 4:
+            case 5:
                 if (!wifi_manager_is_connected()) {
                     display_wifi_connecting_page(
                         (char*)wifi_manager_get_ssid(),
@@ -591,7 +662,7 @@ void display_sensor_data_pages(
                 }
                 break;
 
-            case 5:
+            case 6:
                 if (wifi_manager_is_connected()) {
                     display_wifi_connected_page(
                         (char*)wifi_manager_get_ssid(),
@@ -601,10 +672,10 @@ void display_sensor_data_pages(
 
             /*
             // ENS160 PAGES DISABLED
-            case 2:
+            case 7:
                 display_tvoc_page(tvoc);
                 break;
-            case 3:
+            case 8:
                 display_eco2_page(eco2);
                 break;
             */

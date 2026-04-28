@@ -20,6 +20,7 @@
 #include "esp_system.h"
 #include "bmp280.h"
 #include "wifi_manager.h"
+#include "time_manager.h"
 
 //TinyUSB includes for USB CDC test (USB Serial) 
 #include "tinyusb.h"
@@ -148,8 +149,18 @@ void app_main(void)
         ESP_LOGW(TAG, "Running in offline mode");
     }
 
+    /* Initialize time handling */
+    time_manager_init();
 
-
+    /* Sync time if needed */
+    if (!time_manager_sync_if_needed()) {
+        ESP_LOGW(TAG, "Time not available yet, running offline");
+    } else {
+        int64_t now;
+        if (time_manager_get_timestamp(&now)) {
+            ESP_LOGI(TAG, "Current UTC time: %lld", (long long)now);
+        }
+    }
     // Variable to track display update frequency
     int loop_count = 0;
 

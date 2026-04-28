@@ -30,17 +30,19 @@ void display_sensor_data_pages(float temperature, float humidity, float pressure
 void display_pressure_page(float pressure);
 void display_altitude_page(float altitude);
 
+//void display_wifi_connecting_page(const char *ssid, int attempt, int max_attempts);
 void display_wifi_connecting_page(
     const char *ssid,
     int attempt,
     int max_attempts
 );
-
+//void display_wifi_connected_page(const char *ssid, int rssi);
 void display_wifi_connected_page(
     const char *ssid,
     int rssi
 );
 
+void display_time_date_page(void);
 
 
 #endif // DISPLAY_H

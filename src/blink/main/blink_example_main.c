@@ -19,6 +19,7 @@
 #include "ens160_aht21.h"
 #include "esp_system.h"
 #include "bmp280.h"
+#include "esp_timer.h"
 
 // Include WiFi manager for network connectivity
 #include "wifi_manager.h"
@@ -40,6 +41,7 @@ static const char *TAG = "example";
 static ens160_aht21_handle_t ens160_aht21_handle;
 ssd1306_handle_t ssd1306_handle;
 bmp280_handle_t bmp280_handle;
+static esp_timer_handle_t page_timer_handle;
 
 /* Use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
    or you can edit the following line and set a number here.
@@ -51,6 +53,41 @@ bmp280_handle_t bmp280_handle;
 static int64_t timestamp;
 float temperature, humidity;
 float pressure, altitude;
+bool page_update_needed = true; // Force initial update on startup
+
+
+static void PageUpdateTimerCallback(void *arg)
+{
+    page_update_needed = true;
+    ESP_LOGW(TAG, "Page update timer expired, flag set");
+}
+
+void page_update_acknowledge(void)
+{
+    page_update_needed = false;
+    ESP_LOGW(TAG, "Update acknowledged, flag cleared");
+}
+
+static void PageUpdateTimerStart(uint32_t period_seconds)
+{
+    esp_timer_create_args_t timer_args = {
+        .callback = &PageUpdateTimerCallback,
+        .name = "PageUpdateTimer"
+    };
+
+    ESP_ERROR_CHECK(
+        esp_timer_create(&timer_args, &page_timer_handle)
+    );
+
+    ESP_ERROR_CHECK(
+        esp_timer_start_periodic(
+            page_timer_handle,
+            (uint64_t)period_seconds * 1000000ULL
+        )
+    );
+
+    ESP_LOGI(TAG, "Page update timer started (%lu s)", (unsigned long)period_seconds);
+}
 
 void app_main(void)
 {
@@ -107,13 +144,17 @@ void app_main(void)
     // Initialize measurement scheduler to trigger every 30 seconds
     measurement_scheduler_init(30);  // 30 seconds
 
+    PageUpdateTimerStart(10); // Update display every 10 seconds
+
     measurement_clear_all(); // Clear any existing measurements on startup for clean testing
 
     while (1) {
 
         // Read ENS160 + AHT21 and BMP280-M sensor data and update display every 20 iterations (2 seconds)
-        if (loop_count % 20 == 0) {
+        if (page_update_needed) {
             
+            page_update_acknowledge();
+
             //uint16_t tvoc, eco2;
             // if (ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity, &tvoc, &eco2) == ESP_OK) {
             

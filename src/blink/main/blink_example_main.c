@@ -34,6 +34,9 @@
 #include "tinyusb.h"
 #include "tusb_cdc_acm.h"
 
+// Include upload manager for handling data uploads to Supabase
+#include "upload_manager.h"
+
 uint16_t tvoc, eco2;
 
 static const char *TAG = "example";
@@ -282,8 +285,11 @@ void app_main(void)
                              batch[i].altitude_m_x10 / 10.0);
                 }
 
+                // Attempt to upload one batch of measurements (5 in this case)
+                upload_manager_try_upload_one_batch();
+
                 // After uploading, delete the uploaded measurements to free up space (FIFO)
-                measurement_delete(5);
+                //measurement_delete(5);
             }
             else{
                 ESP_LOGI(TAG, "Not enough measurements stored yet for upload (have %d, need 5)", measurement_count());

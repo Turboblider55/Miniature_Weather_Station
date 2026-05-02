@@ -141,11 +141,9 @@ void app_main(void)
             ESP_LOGI(TAG, "Current UTC time: %lld", (long long)now);
         }
     }
-    // Variable to track display update frequency
-    int loop_count = 0;
 
     // Initialize measurement scheduler to trigger every 30 seconds
-    measurement_scheduler_init(30);  // 30 seconds
+    measurement_scheduler_init(15);  // 15 seconds
 
     PageUpdateTimerStart(10); // Update display every 10 seconds
 
@@ -296,7 +294,6 @@ void app_main(void)
             }
         }
 
-        loop_count++;
         vTaskDelay((CONFIG_BLINK_PERIOD / portTICK_PERIOD_MS ) / 2); // Delay for half the blink period to achieve a full on-off cycle
     }
 }

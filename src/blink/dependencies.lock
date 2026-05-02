@@ -1,4 +1,14 @@
 dependencies:
+  espressif/cjson:
+    component_hash: e788323270d90738662d66fffa910bfe1fba019bba087f01557e70c40485b469
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.7.19~2
   espressif/esp_tinyusb:
     component_hash: fa0c96d7bdc3fe37383d735e2839a9007200a0b6bc039458d45d004b50146e81
     dependencies:
@@ -80,10 +90,11 @@ dependencies:
       type: service
     version: 1.2.7
 direct_dependencies:
+- espressif/cjson
 - espressif/esp_tinyusb
 - espressif/led_strip
 - fasani/adafruit_gfx
 - k0i05/esp_ssd1306
-manifest_hash: 3b54d11021a4366ebda39f27cb86b5bced318db1f46991a1c4456e2f1d0e23b1
+manifest_hash: c770ebf87b4eccbfe6dece7e0615c45f2075dfdd87ac294709aa10df5316ee26
 target: esp32s2
 version: 2.0.0

@@ -39,7 +39,11 @@
 
 uint16_t tvoc, eco2;
 
-static const char *TAG = "example";
+static const char *TAG = "weather_station";
+
+static bool upload_just_happened = false;
+static int upload_status_display_cycles = 0;
+#define UPLOAD_STATUS_DISPLAY_CYCLES 3
 
 static ens160_aht21_handle_t ens160_aht21_handle;
 ssd1306_handle_t ssd1306_handle;
@@ -49,8 +53,6 @@ static esp_timer_handle_t page_timer_handle;
 /* Use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
    or you can edit the following line and set a number here.
 */
-#define BLINK_GPIO 15
-
 
 // Variables to hold sensor data for storage
 static int64_t timestamp;
@@ -155,6 +157,21 @@ void app_main(void)
         if (page_update_needed) {
             
             page_update_acknowledge();
+
+
+            // Displaying upload status page if an upload just happened, for a few cycles
+            if (upload_just_happened && upload_status_display_cycles > 0) {
+                display_upload_status_page();
+                upload_status_display_cycles--;
+
+                if (upload_status_display_cycles == 0) {
+                    upload_just_happened = false;
+                }
+
+                // Stop here, do NOT render normal sensor pages this cycle
+                vTaskDelay(10);
+                continue;
+            }
 
             //uint16_t tvoc, eco2;
             // if (ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity, &tvoc, &eco2) == ESP_OK) {
@@ -285,6 +302,12 @@ void app_main(void)
 
                 // Attempt to upload one batch of measurements (5 in this case)
                 upload_manager_try_upload_one_batch();
+
+
+                // After uploading, set a flag to show upload status on the display for a few cycles
+                upload_just_happened = true;
+                upload_status_display_cycles = UPLOAD_STATUS_DISPLAY_CYCLES;
+
 
                 // After uploading, delete the uploaded measurements to free up space (FIFO)
                 //measurement_delete(5);

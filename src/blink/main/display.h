@@ -44,5 +44,6 @@ void display_wifi_connected_page(
 
 void display_time_date_page(void);
 
+void display_upload_status_page(void);
 
 #endif // DISPLAY_H

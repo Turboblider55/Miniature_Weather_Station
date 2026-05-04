@@ -5,6 +5,8 @@
 #include "wifi_manager.h"
 #include <time.h>
 #include "time_manager.h"
+#include "upload_manager.h"
+#include "measurement.h"
 
 // Global variable to track current display page
 int current_page = 0;
@@ -36,6 +38,19 @@ void display_small_number(ssd1306_handle_t handle, int number, int x, int y) {
                 ssd1306_set_pixel(handle, x + col, y + row, false);
             }
         }
+    }
+}
+
+// Helper function to convert upload result enum to text for display
+static const char *upload_result_to_text(upload_result_t r)
+{
+    switch (r) {
+        case UPLOAD_OK:           return "UPLOAD OK";
+        case UPLOAD_NET_ERROR:    return "NET ERROR";
+        case UPLOAD_AUTH_ERROR:   return "AUTH ERROR";
+        case UPLOAD_SERVER_ERROR: return "SERVER ERROR";
+        case UPLOAD_SKIPPED:      return "NO UPLOAD";
+        default:                  return "UPLOAD FAIL";
     }
 }
 
@@ -437,27 +452,6 @@ void display_eco2_page(uint16_t eco2)
     ssd1306_display_pages(ssd1306_handle);
 }
 
-// // Main display function that cycles through pages
-// void display_sensor_data_pages(float temperature, float humidity, uint16_t tvoc, uint16_t eco2)
-// {
-//     switch (current_page) {
-//         case 0:
-//             display_temperature_page(temperature);
-//             break;
-//         case 1:
-//             display_humidity_page(humidity);
-//             break;
-//         case 2:
-//             display_tvoc_page(tvoc);
-//             break;
-//         case 3:
-//             display_eco2_page(eco2);
-//             break;
-//     }
-
-//     // Cycle to next page
-//     current_page = (current_page + 1) % TOTAL_PAGES;
-// }
 
 void display_wifi_connecting_page(
     const char *ssid,
@@ -622,12 +616,30 @@ void display_time_date_page(void)
     ssd1306_display_pages(ssd1306_handle);
 }
 
+void display_upload_status_page(void)
+{
+    ssd1306_clear_display(ssd1306_handle, false);
+
+    upload_result_t result = upload_manager_get_last_result();
+    const char *status_text = upload_result_to_text(result);
+
+    ssd1306_display_text(ssd1306_handle, 0, "UPLOAD STATUS", false);
+    ssd1306_display_text(ssd1306_handle, 2, status_text, false);
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "Queued: %d", measurement_count());
+    ssd1306_display_text(ssd1306_handle, 4, buf, false);
+
+    ssd1306_display_pages(ssd1306_handle);
+}
+
 void display_sensor_data_pages(
     float temperature,
     float humidity,
     float pressure,
     float altitude)
     {
+
         switch (current_page) {
             case 0:
                 // Time and date page

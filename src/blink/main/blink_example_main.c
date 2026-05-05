@@ -41,14 +41,20 @@ uint16_t tvoc, eco2;
 
 static const char *TAG = "weather_station";
 
+
+static bool display_force_update = false;
+static bool upload_in_progress = false;
+
 static bool upload_just_happened = false;
 static int upload_status_display_cycles = 0;
-#define UPLOAD_STATUS_DISPLAY_CYCLES 3
+#define UPLOAD_STATUS_DISPLAY_CYCLES 2
 
 static ens160_aht21_handle_t ens160_aht21_handle;
 ssd1306_handle_t ssd1306_handle;
 bmp280_handle_t bmp280_handle;
 static esp_timer_handle_t page_timer_handle;
+
+// Global variable to hold the latest measurement for display and upload
 
 /* Use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
    or you can edit the following line and set a number here.
@@ -92,6 +98,105 @@ static void PageUpdateTimerStart(uint32_t period_seconds)
     );
 
     ESP_LOGI(TAG, "Page update timer started (%lu s)", (unsigned long)period_seconds);
+}
+
+static bool perform_measurement(measurement_t *m)
+{
+    // This function can be used to trigger a measurement outside of the regular scheduler, if needed
+    // For now, we rely on the measurement scheduler to trigger measurements at regular intervals
+    ESP_LOGI(TAG, "Measurement triggered");
+    //uint16_t tvoc, eco2;
+
+    // if (ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity, &tvoc, &eco2) == ESP_OK) {
+    
+    // Initialize I2C bus for ENS160 + AHT21 (I2C_NUM_1 on pins 8/9)
+    // SDA - GPIO8, SCL - GPIO9
+    i2c_master_bus_config_t i2c_bus_config_env = {
+        .i2c_port = I2C_NUM_1,
+        .sda_io_num = 8,
+        .scl_io_num = 9,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .intr_priority = 0,
+    };
+    i2c_master_bus_handle_t i2c_bus_handle_env;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_env, &i2c_bus_handle_env));
+
+    // Initialize ENS160 + AHT21 sensor module
+    esp_err_t env_init_result = ens160_aht21_init(&ens160_aht21_handle, i2c_bus_handle_env);
+
+    if (env_init_result != ESP_OK) {
+        ESP_LOGE(TAG, "ENS160/AHT21 initialization failed: %s", esp_err_to_name(env_init_result));
+        ssd1306_clear_display(ssd1306_handle, false);
+        ssd1306_display_text(ssd1306_handle, 0, "ENS160/AHT21", false);
+        ssd1306_display_text(ssd1306_handle, 1, "Init Failed", false);
+        ssd1306_display_text(ssd1306_handle, 2, "Check wiring", false);
+        ssd1306_display_text(ssd1306_handle, 3, "ADD=3V3, CS=3V3", false);
+
+        return false;
+    }
+
+    esp_err_t status = ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity);
+
+    if(status != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read from ENS160/AHT21: %s", esp_err_to_name(status));
+        ssd1306_clear_display(ssd1306_handle, false);
+        ssd1306_display_text(ssd1306_handle, 0, "ENS160/AHT21", false);
+        ssd1306_display_text(ssd1306_handle, 1, "Read Failed", false);  
+        return false;
+    }
+
+    //display_sensor_data_pages(temperature, humidity, tvoc, eco2);
+    i2c_master_bus_rm_device(ens160_aht21_handle.aht21_dev_handle); // Remove AHT21 device from bus before reinitializing for BMP280
+    //i2c_master_bus_reset(i2c_bus_handle_env); // Reset the bus to clear any residual state from ENS160/AHT21
+    i2c_del_master_bus(i2c_bus_handle_env); // Clean up the bus handle before reinitializing for BMP280 
+    gpio_reset_pin(8); // Reset SDA pin to clear any residual state from ENS160/AHT21
+    gpio_reset_pin(9); // Reset SCL pin to clear any residual state from ENS160/AHT21
+    // If BMP280 is available, read pressure and altitude and pass to display function
+    // Initialize I2C bus for BMP280 (I2C_NUM_1 on pins 3/5) - REUSED from ENS160/AHT21 since they are on the same bus
+    i2c_master_bus_config_t i2c_bus_config_bmp = {
+        .i2c_port = I2C_NUM_1,
+        .sda_io_num = 5,
+        .scl_io_num = 3,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .intr_priority = 0,
+    };
+    i2c_master_bus_handle_t i2c_bus_handle_bmp;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_bmp, &i2c_bus_handle_bmp));
+    
+    vTaskDelay(pdMS_TO_TICKS(100)); // Short delay to ensure bus is ready before BMP280 initialization
+
+    // Initialize BMP280
+    //
+    esp_err_t bmp_init = bmp280_init(&bmp280_handle, i2c_bus_handle_bmp);
+    
+    if (bmp_init != ESP_OK) {
+        ESP_LOGE(TAG, "BMP280 initialization failed");
+        return false;
+    }
+
+    bmp280_read_compensated_data(&bmp280_handle, &temperature, &pressure, &altitude);
+
+    time_manager_get_timestamp(&timestamp);
+
+    i2c_master_bus_rm_device(bmp280_handle.dev_handle); // Remove BMP280 device from bus after reading
+    i2c_del_master_bus(i2c_bus_handle_bmp); // Clean up the bus handle after BMP280
+    gpio_reset_pin(3); // Reset SDA pin after BMP280
+    gpio_reset_pin(5); // Reset SCL pin after BMP280
+
+    // Update global measurement struct for display and upload
+    m.timestamp_utc = timestamp;
+
+    m.temperature_c_x100 = temperature;
+    m.humidity_x100      = humidity;
+    m.pressure_hpa_x100  = pressure;
+    m.altitude_m_x10     = altitude;
+
+    /* ENS160 inactive for now */
+    m.tvoc_ppb = -1;
+    m.eco2_ppm = -1;
+    return true;
 }
 
 void app_main(void)
@@ -154,10 +259,15 @@ void app_main(void)
     while (1) {
 
         // Read ENS160 + AHT21 and BMP280-M sensor data and update display every 20 iterations (2 seconds)
-        if (page_update_needed) {
+        if (page_update_needed || display_force_update) {
             
+            display_force_update = false;
             page_update_acknowledge();
 
+            if(upload_in_progress) {
+                display_upload_status_page();
+                continue; // Skip normal sensor display updates while upload is in progress
+            }
 
             // Displaying upload status page if an upload just happened, for a few cycles
             if (upload_just_happened && upload_status_display_cycles > 0) {
@@ -173,91 +283,20 @@ void app_main(void)
                 continue;
             }
 
-            //uint16_t tvoc, eco2;
-            // if (ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity, &tvoc, &eco2) == ESP_OK) {
-            
-            // Initialize I2C bus for ENS160 + AHT21 (I2C_NUM_1 on pins 8/9)
-            // SDA - GPIO8, SCL - GPIO9
-            i2c_master_bus_config_t i2c_bus_config_env = {
-                .i2c_port = I2C_NUM_1,
-                .sda_io_num = 8,
-                .scl_io_num = 9,
-                .clk_source = I2C_CLK_SRC_DEFAULT,
-                .glitch_ignore_cnt = 7,
-                .intr_priority = 0,
-            };
-            i2c_master_bus_handle_t i2c_bus_handle_env;
-            ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_env, &i2c_bus_handle_env));
+            measurement_t m; // Local variable to hold the latest measurement for display
 
-            // Initialize ENS160 + AHT21 sensor module
-            esp_err_t env_init_result = ens160_aht21_init(&ens160_aht21_handle, i2c_bus_handle_env);
-            bool env_available = (env_init_result == ESP_OK);
-
-            if (!env_available) {
-                ESP_LOGE(TAG, "ENS160/AHT21 initialization failed: %s", esp_err_to_name(env_init_result));
-                ssd1306_clear_display(ssd1306_handle, false);
-                ssd1306_display_text(ssd1306_handle, 0, "ENS160/AHT21", false);
-                ssd1306_display_text(ssd1306_handle, 1, "Init Failed", false);
-                ssd1306_display_text(ssd1306_handle, 2, "Check wiring", false);
-                ssd1306_display_text(ssd1306_handle, 3, "ADD=3V3, CS=3V3", false);
-            }
-
-            // if (!env_available) {
-            //     ssd1306_clear_display(ssd1306_handle, false);
-            //     ssd1306_display_text(ssd1306_handle, 0, "ENS160/AHT21", false);
-            //     ssd1306_display_text(ssd1306_handle, 1, "Not Available", false);
-            // }
-
-            if (ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity) == ESP_OK) {
-            //display_sensor_data_pages(temperature, humidity, tvoc, eco2);
-            i2c_master_bus_rm_device(ens160_aht21_handle.aht21_dev_handle); // Remove AHT21 device from bus before reinitializing for BMP280
-            //i2c_master_bus_reset(i2c_bus_handle_env); // Reset the bus to clear any residual state from ENS160/AHT21
-            i2c_del_master_bus(i2c_bus_handle_env); // Clean up the bus handle before reinitializing for BMP280 
-            gpio_reset_pin(8); // Reset SDA pin to clear any residual state from ENS160/AHT21
-            gpio_reset_pin(9); // Reset SCL pin to clear any residual state from ENS160/AHT21
-            // If BMP280 is available, read pressure and altitude and pass to display function
-            // Initialize I2C bus for BMP280 (I2C_NUM_1 on pins 3/5) - REUSED from ENS160/AHT21 since they are on the same bus
-            i2c_master_bus_config_t i2c_bus_config_bmp = {
-                .i2c_port = I2C_NUM_1,
-                .sda_io_num = 5,
-                .scl_io_num = 3,
-                .clk_source = I2C_CLK_SRC_DEFAULT,
-                .glitch_ignore_cnt = 7,
-                .intr_priority = 0,
-            };
-            i2c_master_bus_handle_t i2c_bus_handle_bmp;
-            ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_bmp, &i2c_bus_handle_bmp));
-            
-            vTaskDelay(pdMS_TO_TICKS(100)); // Short delay to ensure bus is ready before BMP280 initialization
-
-            // Initialize BMP280
-            //
-            esp_err_t bmp_init = bmp280_init(&bmp280_handle, i2c_bus_handle_bmp);
-            bool bmp_available = (bmp_init == ESP_OK);
-
-            if (!bmp_available) {
-                ESP_LOGE(TAG, "BMP280 initialization failed");
-            }
-
-            bmp280_read_compensated_data(&bmp280_handle, &temperature, &pressure, &altitude);
+            //This is for the display to show updated sensor values more frequently, even if the measurement scheduler has not triggered a new measurement yet. It will read the latest sensor values and update the display every 10 seconds based on the timer, while the measurement scheduler will trigger actual measurements every 15 seconds. This way, if the measurement scheduler triggers a new measurement, it will be reflected on the display within at most 10 seconds when the page update timer expires.
+            perform_measurement(&m); // Read sensors and update global variables
 
             display_sensor_data_pages(
-                temperature,
-                humidity,
-                pressure,
-                altitude
+                m.temperature_c_x100 ,
+                m.humidity_x100 ,
+                m.pressure_hpa_x100 ,
+                m.altitude_m_x10 
             );
 
             ESP_LOGI(TAG, "Temperature: %.2f C, Humidity: %.2f %%, Pressure: %.2f hPa, Altitude: %.2f m",
-                        temperature, humidity, pressure, altitude);
-
-            i2c_master_bus_rm_device(bmp280_handle.dev_handle); // Remove BMP280 device from bus after reading
-            i2c_del_master_bus(i2c_bus_handle_bmp); // Clean up the bus handle after BMP280
-            gpio_reset_pin(3); // Reset SDA pin after BMP280
-            gpio_reset_pin(5); // Reset SCL pin after BMP280
-            }
-
-            time_manager_get_timestamp(&timestamp);
+                        m.temperature_c_x100 / 100.0f, m.humidity_x100 / 100.0f, m.pressure_hpa_x100 / 100.0f, m.altitude_m_x10 / 10.0f);
 
         }
         
@@ -270,16 +309,12 @@ void app_main(void)
 
             measurement_t m;
 
-            m.timestamp_utc = timestamp;
+            perform_measurement(&m); // Read sensors and update global variables
 
-            m.temperature_c_x100 = temperature * 100;
-            m.humidity_x100      = humidity * 100;
-            m.pressure_hpa_x100  = pressure * 100;
-            m.altitude_m_x10     = altitude * 10;
-
-            /* ENS160 inactive for now */
-            m.tvoc_ppb = -1;
-            m.eco2_ppm = -1;
+            m.temperature_c_x100 *= 100; // Convert to fixed-point representation for storage
+            m.humidity_x100      *= 100;    
+            m.pressure_hpa_x100  *= 100;
+            m.altitude_m_x10     *= 10;
 
             measurement_store(&m);
 
@@ -301,8 +336,14 @@ void app_main(void)
                 }
 
                 // Attempt to upload one batch of measurements (5 in this case)
-                upload_manager_try_upload_one_batch();
 
+                upload_in_progress = true;
+                display_force_update = true;
+
+                upload_manager_try_upload_one_batch();
+                
+                upload_in_progress = false;
+                display_force_update = true;
 
                 // After uploading, set a flag to show upload status on the display for a few cycles
                 upload_just_happened = true;

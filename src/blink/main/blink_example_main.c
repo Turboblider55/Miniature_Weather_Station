@@ -37,6 +37,8 @@
 // Include upload manager for handling data uploads to Supabase
 #include "upload_manager.h"
 
+#include "device_state.h" // Include device state management (e.g., for handling different modes like MEASURE, UPLOAD, DISPLAY, IDLE)
+
 uint16_t tvoc, eco2;
 
 static const char *TAG = "weather_station";
@@ -186,17 +188,139 @@ static bool perform_measurement(measurement_t *m)
     gpio_reset_pin(5); // Reset SCL pin after BMP280
 
     // Update global measurement struct for display and upload
-    m.timestamp_utc = timestamp;
+    m->timestamp_utc = timestamp;
 
-    m.temperature_c_x100 = temperature;
-    m.humidity_x100      = humidity;
-    m.pressure_hpa_x100  = pressure;
-    m.altitude_m_x10     = altitude;
+    m->temperature_c_x100 = temperature;
+    m->humidity_x100      = humidity;
+    m->pressure_hpa_x100  = pressure;
+    m->altitude_m_x10     = altitude;
 
     /* ENS160 inactive for now */
-    m.tvoc_ppb = -1;
-    m.eco2_ppm = -1;
+    m->tvoc_ppb = -1;
+    m->eco2_ppm = -1;
     return true;
+}
+
+static bool latest_measurement_valid = false;
+
+void handle_state_measure(void)
+{
+    if (measurement_scheduler_should_measure()) {
+
+        ESP_LOGI(TAG, "Measurement triggered");
+
+        measurement_scheduler_acknowledge();
+
+        measurement_t m;
+
+        perform_measurement(&m); // Read sensors and update global variables
+
+        latest_measurement_valid = true;
+
+        m.temperature_c_x100 *= 100; // Convert to fixed-point representation for storage
+        m.humidity_x100      *= 100;    
+        m.pressure_hpa_x100  *= 100;
+        m.altitude_m_x10     *= 10;
+
+        measurement_store(&m);
+    }
+
+    device_state = STATE_UPLOAD;
+}
+static bool upload_attempted_this_cycle = false;
+
+void handle_state_upload(void)
+{
+    if (measurement_count() < 5) {
+        // Not enough measurements to upload yet, go back to measuring
+        ESP_LOGI(TAG, "Not enough measurements stored yet for upload (have %d, need 5)", measurement_count());
+        device_state = STATE_DISPLAY;
+        return;
+    }
+
+    // ready to upload
+    ESP_LOGI(TAG, "Ready to upload measurements (have %d)", measurement_count());
+    
+    // For demonstration, read back the first 5 measurements and log them
+    measurement_t batch[5];
+    for (int i = 0; i < 5; i++) {
+        measurement_get(i, &batch[i]);
+        ESP_LOGI(TAG, "Measurement %d: Time=%lld, Temp=%.2f C, Humidity=%.2f %%, Pressure=%.2f hPa, Altitude=%.2f m",
+                    i,
+                    (long long)batch[i].timestamp_utc,
+                    batch[i].temperature_c_x100 / 100.0,
+                    batch[i].humidity_x100 / 100.0,
+                    batch[i].pressure_hpa_x100 / 100.0,
+                    batch[i].altitude_m_x10 / 10.0);
+    }
+
+    // Attempt to upload one batch of measurements (5 in this case)
+
+    upload_in_progress = true;
+    display_force_update = true;
+
+    upload_manager_try_upload_one_batch();
+    
+    upload_in_progress = false;
+    display_force_update = true;
+
+    // After uploading, set a flag to show upload status on the display for a few cycles
+    upload_just_happened = true;
+    upload_status_display_cycles = UPLOAD_STATUS_DISPLAY_CYCLES;
+
+    device_state = STATE_DISPLAY;
+}
+
+void handle_state_display(void)
+{
+    if (page_update_needed || display_force_update) {
+            
+        display_force_update = false;
+        page_update_acknowledge();
+
+        if(upload_in_progress) {
+            display_upload_status_page();
+            return; // Skip normal sensor display updates while upload is in progress
+        }
+
+        // Displaying upload status page if an upload just happened, for a few cycles
+        if (upload_just_happened && upload_status_display_cycles > 0) {
+            display_upload_status_page();
+            upload_status_display_cycles--;
+
+            if (upload_status_display_cycles == 0) {
+                upload_just_happened = false;
+            }
+
+            // Stop here, do NOT render normal sensor pages this cycle
+            vTaskDelay(10);
+            return;
+        }
+
+        measurement_t m; // Local variable to hold the latest measurement for display
+
+        //This is for the display to show updated sensor values more frequently, even if the measurement scheduler has not triggered a new measurement yet. It will read the latest sensor values and update the display every 10 seconds based on the timer, while the measurement scheduler will trigger actual measurements every 15 seconds. This way, if the measurement scheduler triggers a new measurement, it will be reflected on the display within at most 10 seconds when the page update timer expires.
+        perform_measurement(&m); // Read sensors and update global variables
+
+        display_sensor_data_pages(
+            m.temperature_c_x100 ,
+            m.humidity_x100 ,
+            m.pressure_hpa_x100 ,
+            m.altitude_m_x10 
+        );
+
+        ESP_LOGI(TAG, "Temperature: %.2f C, Humidity: %.2f %%, Pressure: %.2f hPa, Altitude: %.2f m",
+                    m.temperature_c_x100 / 100.0f, m.humidity_x100 / 100.0f, m.pressure_hpa_x100 / 100.0f, m.altitude_m_x10 / 10.0f);
+        
+        device_state = STATE_IDLE;
+    }
+}
+
+void handle_state_idle(void)
+{
+    upload_attempted_this_cycle = false;
+    latest_measurement_valid = false;
+    device_state = STATE_MEASURE;
 }
 
 void app_main(void)
@@ -258,106 +382,127 @@ void app_main(void)
 
     while (1) {
 
-        // Read ENS160 + AHT21 and BMP280-M sensor data and update display every 20 iterations (2 seconds)
-        if (page_update_needed || display_force_update) {
+        // // Read ENS160 + AHT21 and BMP280-M sensor data and update display every 20 iterations (2 seconds)
+        // if (page_update_needed || display_force_update) {
             
-            display_force_update = false;
-            page_update_acknowledge();
+        //     display_force_update = false;
+        //     page_update_acknowledge();
 
-            if(upload_in_progress) {
-                display_upload_status_page();
-                continue; // Skip normal sensor display updates while upload is in progress
-            }
+        //     if(upload_in_progress) {
+        //         display_upload_status_page();
+        //         continue; // Skip normal sensor display updates while upload is in progress
+        //     }
 
-            // Displaying upload status page if an upload just happened, for a few cycles
-            if (upload_just_happened && upload_status_display_cycles > 0) {
-                display_upload_status_page();
-                upload_status_display_cycles--;
+        //     // Displaying upload status page if an upload just happened, for a few cycles
+        //     if (upload_just_happened && upload_status_display_cycles > 0) {
+        //         display_upload_status_page();
+        //         upload_status_display_cycles--;
 
-                if (upload_status_display_cycles == 0) {
-                    upload_just_happened = false;
-                }
+        //         if (upload_status_display_cycles == 0) {
+        //             upload_just_happened = false;
+        //         }
 
-                // Stop here, do NOT render normal sensor pages this cycle
-                vTaskDelay(10);
-                continue;
-            }
+        //         // Stop here, do NOT render normal sensor pages this cycle
+        //         vTaskDelay(10);
+        //         continue;
+        //     }
 
-            measurement_t m; // Local variable to hold the latest measurement for display
+        //     measurement_t m; // Local variable to hold the latest measurement for display
 
-            //This is for the display to show updated sensor values more frequently, even if the measurement scheduler has not triggered a new measurement yet. It will read the latest sensor values and update the display every 10 seconds based on the timer, while the measurement scheduler will trigger actual measurements every 15 seconds. This way, if the measurement scheduler triggers a new measurement, it will be reflected on the display within at most 10 seconds when the page update timer expires.
-            perform_measurement(&m); // Read sensors and update global variables
+        //     //This is for the display to show updated sensor values more frequently, even if the measurement scheduler has not triggered a new measurement yet. It will read the latest sensor values and update the display every 10 seconds based on the timer, while the measurement scheduler will trigger actual measurements every 15 seconds. This way, if the measurement scheduler triggers a new measurement, it will be reflected on the display within at most 10 seconds when the page update timer expires.
+        //     perform_measurement(&m); // Read sensors and update global variables
 
-            display_sensor_data_pages(
-                m.temperature_c_x100 ,
-                m.humidity_x100 ,
-                m.pressure_hpa_x100 ,
-                m.altitude_m_x10 
-            );
+        //     display_sensor_data_pages(
+        //         m.temperature_c_x100 ,
+        //         m.humidity_x100 ,
+        //         m.pressure_hpa_x100 ,
+        //         m.altitude_m_x10 
+        //     );
 
-            ESP_LOGI(TAG, "Temperature: %.2f C, Humidity: %.2f %%, Pressure: %.2f hPa, Altitude: %.2f m",
-                        m.temperature_c_x100 / 100.0f, m.humidity_x100 / 100.0f, m.pressure_hpa_x100 / 100.0f, m.altitude_m_x10 / 10.0f);
+        //     ESP_LOGI(TAG, "Temperature: %.2f C, Humidity: %.2f %%, Pressure: %.2f hPa, Altitude: %.2f m",
+        //                 m.temperature_c_x100 / 100.0f, m.humidity_x100 / 100.0f, m.pressure_hpa_x100 / 100.0f, m.altitude_m_x10 / 10.0f);
 
-        }
+        // }
         
-        /* Measurement logic */
-        if (measurement_scheduler_should_measure()) {
+        // /* Measurement logic */
+        // if (measurement_scheduler_should_measure()) {
 
-            ESP_LOGI(TAG, "Measurement triggered");
+        //     ESP_LOGI(TAG, "Measurement triggered");
 
-            measurement_scheduler_acknowledge();
+        //     measurement_scheduler_acknowledge();
 
-            measurement_t m;
+        //     measurement_t m;
 
-            perform_measurement(&m); // Read sensors and update global variables
+        //     perform_measurement(&m); // Read sensors and update global variables
 
-            m.temperature_c_x100 *= 100; // Convert to fixed-point representation for storage
-            m.humidity_x100      *= 100;    
-            m.pressure_hpa_x100  *= 100;
-            m.altitude_m_x10     *= 10;
+        //     m.temperature_c_x100 *= 100; // Convert to fixed-point representation for storage
+        //     m.humidity_x100      *= 100;    
+        //     m.pressure_hpa_x100  *= 100;
+        //     m.altitude_m_x10     *= 10;
 
-            measurement_store(&m);
+        //     measurement_store(&m);
 
-            if (measurement_count() >= 5) {
-                // ready to upload
-                ESP_LOGI(TAG, "Ready to upload measurements (have %d)", measurement_count());
+        //     if (measurement_count() >= 5) {
+        //         // ready to upload
+        //         ESP_LOGI(TAG, "Ready to upload measurements (have %d)", measurement_count());
                 
-                // For demonstration, read back the first 5 measurements and log them
-                measurement_t batch[5];
-                for (int i = 0; i < 5; i++) {
-                    measurement_get(i, &batch[i]);
-                    ESP_LOGI(TAG, "Measurement %d: Time=%lld, Temp=%.2f C, Humidity=%.2f %%, Pressure=%.2f hPa, Altitude=%.2f m",
-                             i,
-                             (long long)batch[i].timestamp_utc,
-                             batch[i].temperature_c_x100 / 100.0,
-                             batch[i].humidity_x100 / 100.0,
-                             batch[i].pressure_hpa_x100 / 100.0,
-                             batch[i].altitude_m_x10 / 10.0);
-                }
+        //         // For demonstration, read back the first 5 measurements and log them
+        //         measurement_t batch[5];
+        //         for (int i = 0; i < 5; i++) {
+        //             measurement_get(i, &batch[i]);
+        //             ESP_LOGI(TAG, "Measurement %d: Time=%lld, Temp=%.2f C, Humidity=%.2f %%, Pressure=%.2f hPa, Altitude=%.2f m",
+        //                      i,
+        //                      (long long)batch[i].timestamp_utc,
+        //                      batch[i].temperature_c_x100 / 100.0,
+        //                      batch[i].humidity_x100 / 100.0,
+        //                      batch[i].pressure_hpa_x100 / 100.0,
+        //                      batch[i].altitude_m_x10 / 10.0);
+        //         }
 
-                // Attempt to upload one batch of measurements (5 in this case)
+        //         // Attempt to upload one batch of measurements (5 in this case)
 
-                upload_in_progress = true;
-                display_force_update = true;
+        //         upload_in_progress = true;
+        //         display_force_update = true;
 
-                upload_manager_try_upload_one_batch();
+        //         upload_manager_try_upload_one_batch();
                 
-                upload_in_progress = false;
-                display_force_update = true;
+        //         upload_in_progress = false;
+        //         display_force_update = true;
 
-                // After uploading, set a flag to show upload status on the display for a few cycles
-                upload_just_happened = true;
-                upload_status_display_cycles = UPLOAD_STATUS_DISPLAY_CYCLES;
+        //         // After uploading, set a flag to show upload status on the display for a few cycles
+        //         upload_just_happened = true;
+        //         upload_status_display_cycles = UPLOAD_STATUS_DISPLAY_CYCLES;
 
 
-                // After uploading, delete the uploaded measurements to free up space (FIFO)
-                //measurement_delete(5);
+        //         // After uploading, delete the uploaded measurements to free up space (FIFO)
+        //         //measurement_delete(5);
+        //     }
+        //     else{
+        //         ESP_LOGI(TAG, "Not enough measurements stored yet for upload (have %d, need 5)", measurement_count());
+        //     }
+        // }
+
+        // vTaskDelay((CONFIG_BLINK_PERIOD / portTICK_PERIOD_MS ) / 2); // Delay for half the blink period to achieve a full on-off cycle
+        
+        switch (device_state) {
+
+            case STATE_MEASURE:
+                handle_state_measure();
+                break;
+
+            case STATE_UPLOAD:
+                handle_state_upload();
+                break;
+
+            case STATE_DISPLAY:
+                handle_state_display();
+                break;
+
+            case STATE_IDLE:
+                handle_state_idle();
+                break;
             }
-            else{
-                ESP_LOGI(TAG, "Not enough measurements stored yet for upload (have %d, need 5)", measurement_count());
-            }
-        }
 
-        vTaskDelay((CONFIG_BLINK_PERIOD / portTICK_PERIOD_MS ) / 2); // Delay for half the blink period to achieve a full on-off cycle
+            vTaskDelay(pdMS_TO_TICKS(10));
     }
 }

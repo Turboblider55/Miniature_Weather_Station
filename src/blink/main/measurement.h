@@ -15,6 +15,9 @@ typedef struct {
     int32_t pressure_hpa_x100;
     int32_t altitude_m_x10;
 
+    int32_t lux_x100; // future BH1750 field (fixed-point representation, nullable)
+    uint16_t cloud_index; // future field for cloudiness index (0-100, fixed-point representation)
+
     // future ENS160 fields (nullable)
     int16_t tvoc_ppb;
     int16_t eco2_ppm;

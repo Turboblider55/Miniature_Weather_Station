@@ -10,7 +10,7 @@
 
 // Global variable to track current display page
 int current_page = 0;
-const int TOTAL_PAGES = 7;
+const int TOTAL_PAGES = 8;
 
 // Small 6x6 font bitmaps for numbers 0-9 (6 pixels wide, 6 pixels high)
 // Bit 5 = leftmost pixel, bit 0 = rightmost pixel
@@ -633,11 +633,35 @@ void display_upload_status_page(void)
     ssd1306_display_pages(ssd1306_handle);
 }
 
+void display_light_page(int32_t lux, uint16_t cloud_index)
+{
+    ssd1306_clear_display(ssd1306_handle, false);
+    
+    char buf[32];
+    snprintf(buf, sizeof(buf), "Light: %ld lux", lux);
+
+    char cloud_str[16];
+    if (cloud_index < 20) {
+        strcpy(cloud_str, "Overcast");
+    } else if (cloud_index < 40) {
+        strcpy(cloud_str, "Cloudy");
+    } else if (cloud_index < 60) {
+        strcpy(cloud_str, "Partly Cloudy");
+    } else {
+        strcpy(cloud_str, "Clear");
+    }
+
+    ssd1306_display_text(ssd1306_handle, 2, buf, false);
+    ssd1306_display_text(ssd1306_handle, 4, cloud_str, false);
+}
+
 void display_sensor_data_pages(
     float temperature,
     float humidity,
     float pressure,
-    float altitude)
+    float altitude,
+    int32_t lux,
+    uint16_t cloud_index)
     {
 
         switch (current_page) {
@@ -680,6 +704,10 @@ void display_sensor_data_pages(
                         (char*)wifi_manager_get_ssid(),
                         wifi_manager_get_rssi());
                 }
+                break;
+            
+             case 7:
+                display_light_page(lux, cloud_index);
                 break;
 
             /*

@@ -39,6 +39,9 @@
 
 #include "device_state.h" // Include device state management (e.g., for handling different modes like MEASURE, UPLOAD, DISPLAY, IDLE)
 
+#include "bh1750.h"
+#include "cloudiness.h"
+
 uint16_t tvoc, eco2;
 
 static const char *TAG = "weather_station";
@@ -54,6 +57,7 @@ static int upload_status_display_cycles = 0;
 static ens160_aht21_handle_t ens160_aht21_handle;
 ssd1306_handle_t ssd1306_handle;
 bmp280_handle_t bmp280_handle;
+bh1750_handle_t bh1750_handle;
 static esp_timer_handle_t page_timer_handle;
 
 // Global variable to hold the latest measurement for display and upload
@@ -64,8 +68,11 @@ static esp_timer_handle_t page_timer_handle;
 
 // Variables to hold sensor data for storage
 static int64_t timestamp;
-float temperature, humidity;
-float pressure, altitude;
+float temperature, humidity = 0;
+float pressure, altitude = 0;
+float lux = 0;
+float cloud_index = 0;
+float reference_lux = 0; // Reference lux for cloud index calculation
 bool page_update_needed = true; // Force initial update on startup
 
 
@@ -124,6 +131,8 @@ static bool perform_measurement(measurement_t *m)
     i2c_master_bus_handle_t i2c_bus_handle_env;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_env, &i2c_bus_handle_env));
 
+    vTaskDelay(pdMS_TO_TICKS(166)); // Short delay to ensure bus is ready before sensor initialization
+
     // Initialize ENS160 + AHT21 sensor module
     esp_err_t env_init_result = ens160_aht21_init(&ens160_aht21_handle, i2c_bus_handle_env);
 
@@ -167,7 +176,7 @@ static bool perform_measurement(measurement_t *m)
     i2c_master_bus_handle_t i2c_bus_handle_bmp;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_bmp, &i2c_bus_handle_bmp));
     
-    vTaskDelay(pdMS_TO_TICKS(100)); // Short delay to ensure bus is ready before BMP280 initialization
+    vTaskDelay(pdMS_TO_TICKS(166)); // Short delay to ensure bus is ready before BMP280 initialization
 
     // Initialize BMP280
     //
@@ -187,6 +196,42 @@ static bool perform_measurement(measurement_t *m)
     gpio_reset_pin(3); // Reset SDA pin after BMP280
     gpio_reset_pin(5); // Reset SCL pin after BMP280
 
+    bh1750_handle_t bh1750_handle;
+
+    i2c_master_bus_handle_t i2c_bus_handle_light;
+    i2c_master_bus_config_t i2c_bus_cfg_light = {
+        .i2c_port = I2C_NUM_1,
+        .sda_io_num = 4,
+        .scl_io_num = 2,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .intr_priority = 0,
+    };
+
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg_light, &i2c_bus_handle_light));
+    ESP_ERROR_CHECK(bh1750_init(&bh1750_handle, i2c_bus_handle_light));
+
+    vTaskDelay(pdMS_TO_TICKS(166)); // Short delay to ensure bus is ready before BH1750 reading
+
+    if (bh1750_read_lux(&bh1750_handle, &lux) == ESP_OK) {
+        ESP_LOGI(TAG, "BH1750 light level: %.2f lux", lux);
+    } else {
+        ESP_LOGE(TAG, "Failed to read BH1750 light level");
+        lux = -1; // Indicate error in reading lux
+    }
+
+    if(lux > reference_lux){
+        reference_lux = lux; // Update reference lux if current reading is higher (indicating clearer sky)
+    }
+
+    i2c_master_bus_rm_device(bh1750_handle.dev_handle); // Remove BH1750 device from bus after reading
+    i2c_del_master_bus(i2c_bus_handle_light); // Clean up the bus handle after BH1750
+    gpio_reset_pin(2); // Reset SDA pin after BH1750
+    gpio_reset_pin(4); // Reset SCL pin after BH1750
+
+    //Convert lux to cloud index (0-100 scale) based on reference lux for clear sky at the current location and time
+    cloud_index = calculate_cloud_index(lux, reference_lux) * 100;  
+
     // Update global measurement struct for display and upload
     m->timestamp_utc = timestamp;
 
@@ -198,12 +243,15 @@ static bool perform_measurement(measurement_t *m)
     /* ENS160 inactive for now */
     m->tvoc_ppb = -1;
     m->eco2_ppm = -1;
+
+    m->lux_x100 = (int32_t)(lux * 100); // Convert to fixed-point representation for storage
+    m->cloud_index = (uint16_t)(cloud_index); // Convert to fixed-point representation for storage
     return true;
 }
 
 static bool latest_measurement_valid = false;
 
-void handle_state_measure(void)
+void handle_state_measure_and_store(void)
 {
     if (measurement_scheduler_should_measure()) {
 
@@ -221,8 +269,17 @@ void handle_state_measure(void)
         m.humidity_x100      *= 100;    
         m.pressure_hpa_x100  *= 100;
         m.altitude_m_x10     *= 10;
+        m.lux_x100          *= 100; // Convert to fixed-point representation for storage
+        m.cloud_index       *= 100; // Convert to fixed-point representation for storage
 
         measurement_store(&m);
+
+        if (measurement_count() < 5) {
+            // Not enough measurements to upload yet, go back to measuring
+            ESP_LOGI(TAG, "Not enough measurements stored yet for upload (have %d, need 5)", measurement_count());
+            device_state = STATE_DISPLAY;
+            return;
+        }
     }
 
     device_state = STATE_UPLOAD;
@@ -231,43 +288,41 @@ static bool upload_attempted_this_cycle = false;
 
 void handle_state_upload(void)
 {
-    if (measurement_count() < 5) {
-        // Not enough measurements to upload yet, go back to measuring
-        ESP_LOGI(TAG, "Not enough measurements stored yet for upload (have %d, need 5)", measurement_count());
-        device_state = STATE_DISPLAY;
-        return;
+    if(measurement_count() >= 5) {
+
+        // ready to upload
+        ESP_LOGI(TAG, "Ready to upload measurements (have %d)", measurement_count());
+        
+        // For demonstration, read back the first 5 measurements and log them
+        measurement_t batch[5];
+        for (int i = 0; i < 5; i++) {
+            measurement_get(i, &batch[i]);
+            ESP_LOGI(TAG, "Measurement %d: Time=%lld, Temp=%.2f C, Humidity=%.2f %%, Pressure=%.2f hPa, Altitude=%.2f m, Lux=%.2f, Cloud Index=%.2f",
+                i,
+                (long long)batch[i].timestamp_utc,
+                batch[i].temperature_c_x100 / 100.0,
+                batch[i].humidity_x100 / 100.0,
+                batch[i].pressure_hpa_x100 / 100.0,
+                batch[i].altitude_m_x10 / 10.0,
+                batch[i].lux_x100 / 100.0,
+                batch[i].cloud_index / 100.0
+            );
+        }
+
+        // Attempt to upload one batch of measurements (5 in this case)
+
+        upload_in_progress = true;
+        display_force_update = true;
+
+        upload_manager_try_upload_one_batch();
+        
+        upload_in_progress = false;
+        display_force_update = true;
+
+        // After uploading, set a flag to show upload status on the display for a few cycles
+        upload_just_happened = true;
+        upload_status_display_cycles = UPLOAD_STATUS_DISPLAY_CYCLES;
     }
-
-    // ready to upload
-    ESP_LOGI(TAG, "Ready to upload measurements (have %d)", measurement_count());
-    
-    // For demonstration, read back the first 5 measurements and log them
-    measurement_t batch[5];
-    for (int i = 0; i < 5; i++) {
-        measurement_get(i, &batch[i]);
-        ESP_LOGI(TAG, "Measurement %d: Time=%lld, Temp=%.2f C, Humidity=%.2f %%, Pressure=%.2f hPa, Altitude=%.2f m",
-                    i,
-                    (long long)batch[i].timestamp_utc,
-                    batch[i].temperature_c_x100 / 100.0,
-                    batch[i].humidity_x100 / 100.0,
-                    batch[i].pressure_hpa_x100 / 100.0,
-                    batch[i].altitude_m_x10 / 10.0);
-    }
-
-    // Attempt to upload one batch of measurements (5 in this case)
-
-    upload_in_progress = true;
-    display_force_update = true;
-
-    upload_manager_try_upload_one_batch();
-    
-    upload_in_progress = false;
-    display_force_update = true;
-
-    // After uploading, set a flag to show upload status on the display for a few cycles
-    upload_just_happened = true;
-    upload_status_display_cycles = UPLOAD_STATUS_DISPLAY_CYCLES;
-
     device_state = STATE_DISPLAY;
 }
 
@@ -293,7 +348,7 @@ void handle_state_display(void)
             }
 
             // Stop here, do NOT render normal sensor pages this cycle
-            vTaskDelay(10);
+            vTaskDelay(pdMS_TO_TICKS(10));
             return;
         }
 
@@ -306,14 +361,23 @@ void handle_state_display(void)
             m.temperature_c_x100 ,
             m.humidity_x100 ,
             m.pressure_hpa_x100 ,
-            m.altitude_m_x10 
+            m.altitude_m_x10 ,
+            m.lux_x100,
+            m.cloud_index
         );
 
-        ESP_LOGI(TAG, "Temperature: %.2f C, Humidity: %.2f %%, Pressure: %.2f hPa, Altitude: %.2f m",
-                    m.temperature_c_x100 / 100.0f, m.humidity_x100 / 100.0f, m.pressure_hpa_x100 / 100.0f, m.altitude_m_x10 / 10.0f);
+        ESP_LOGI(TAG, "Temperature: %.2f C, Humidity: %.2f %%, Pressure: %.2f hPa, Altitude: %.2f m, Lux: %.2f lux, Cloud Index: %.2f",
+                    (float)m.temperature_c_x100 ,
+                    (float)m.humidity_x100 ,
+                    (float)m.pressure_hpa_x100 ,
+                    (float)m.altitude_m_x10 ,
+                    (float)m.lux_x100,
+                    (float)m.cloud_index 
+                );
         
-        device_state = STATE_IDLE;
     }
+     
+    device_state = STATE_IDLE;
 }
 
 void handle_state_idle(void)
@@ -487,7 +551,7 @@ void app_main(void)
         switch (device_state) {
 
             case STATE_MEASURE:
-                handle_state_measure();
+                handle_state_measure_and_store();
                 break;
 
             case STATE_UPLOAD:

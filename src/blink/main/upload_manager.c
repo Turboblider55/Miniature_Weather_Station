@@ -66,6 +66,8 @@ static bool build_json_payload(char *buf, size_t buf_len, uint32_t count)
         cJSON_AddNumberToObject(obj, "pressure_hpa_x100", (int)m.pressure_hpa_x100);
         cJSON_AddNumberToObject(obj, "altitude_m_x10", (int)m.altitude_m_x10);
         cJSON_AddStringToObject(obj, "measured_at", ts_buf);
+        cJSON_AddNumberToObject(obj, "lux_x100", (int32_t)m.lux_x100);
+        cJSON_AddNumberToObject(obj, "cloud_index", (int16_t)m.cloud_index);
         cJSON_AddItemToArray(root, obj);
     }
 
@@ -108,7 +110,7 @@ upload_result_t upload_manager_try_upload_one_batch(void)
     }
 
     /* ---- BUILD PAYLOAD ---- */
-    static char json[1024];   // safe size for 5 measurements
+    static char json[1536];   // safe size for 5 measurements
     if (!build_json_payload(json, sizeof(json), BATCH_SIZE)) {
         ESP_LOGE(TAG, "Failed to build JSON payload");
         last_upload_result = UPLOAD_UNKNOWN_ERROR;

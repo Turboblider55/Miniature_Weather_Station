@@ -66,7 +66,7 @@ static bool build_json_payload(char *buf, size_t buf_len, uint32_t count)
         cJSON_AddNumberToObject(obj, "pressure_hpa_x100", (int)m.pressure_hpa_x100);
         cJSON_AddNumberToObject(obj, "altitude_m_x10", (int)m.altitude_m_x10);
         cJSON_AddStringToObject(obj, "measured_at", ts_buf);
-        cJSON_AddNumberToObject(obj, "lux_x100", (int32_t)m.lux_x100);
+        cJSON_AddNumberToObject(obj, "lux", (int32_t)m.lux);
         cJSON_AddNumberToObject(obj, "cloud_index", (int16_t)m.cloud_index);
         cJSON_AddItemToArray(root, obj);
     }

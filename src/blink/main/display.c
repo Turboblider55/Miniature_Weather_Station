@@ -9,25 +9,11 @@
 #include "measurement.h"
 #include "cloudiness.h"
 
+#include "small_text.h"
+
 // Global variable to track current display page
 int current_page = 0;
 const int TOTAL_PAGES = 7;
-
-// Small 6x6 font bitmaps for numbers 0-9 (6 pixels wide, 6 pixels high)
-// Bit 5 = leftmost pixel, bit 0 = rightmost pixel
-const uint8_t small_font_6x6[11][6] = {
-    {0x1E, 0x21, 0x21, 0x21, 0x21, 0x1E}, // 0: 011110, 100001, 100001, 100001, 100001, 011110
-    {0x08, 0x18, 0x08, 0x08, 0x08, 0x1C}, // 1: 001000, 011000, 001000, 001000, 001000, 011100
-    {0x1E, 0x01, 0x0E, 0x10, 0x20, 0x3F}, // 2: 011110, 000001, 001110, 010000, 100000, 111111
-    {0x1E, 0x01, 0x0E, 0x01, 0x01, 0x1E}, // 3: 011110, 000001, 001110, 000001, 000001, 011110
-    {0x11, 0x11, 0x1F, 0x01, 0x01, 0x01}, // 4: 010001, 010001, 011111, 000001, 000001, 000001
-    {0x3F, 0x20, 0x3E, 0x01, 0x01, 0x3E}, // 5: 111111, 100000, 111110, 000001, 000001, 111110
-    {0x1E, 0x20, 0x3E, 0x21, 0x21, 0x1E}, // 6: 011110, 100000, 111110, 100001, 100001, 011110
-    {0x3F, 0x01, 0x02, 0x04, 0x08, 0x08}, // 7: 111111, 000001, 000010, 000100, 001000, 001000
-    {0x1E, 0x21, 0x1E, 0x21, 0x21, 0x1E}, // 8: 011110, 100001, 011110, 100001, 100001, 011110
-    {0x1E, 0x21, 0x1F, 0x01, 0x01, 0x1E},  // 9: 011110, 100001, 011111, 000001, 000001, 011110
-    {0x0c, 0x12, 0x12, 0x1e, 0x12, 0x12}  // a: 001100, 010010, 010010, 011110, 010010, 010010
-};
 
 const uint8_t icon_sun_32[128] = {
     0x00,0x00,0x00,0x00,0x00,0x01,0x80,0x00,
@@ -117,20 +103,6 @@ const uint8_t icon_moon_32[128] = {
     0x00,0x7f,0xfe,0x00,0x00,0x0f,0xf0,0x00
 };
 
-// Function to display a small number at specific coordinates (6x6 font)
-void display_small_number(ssd1306_handle_t handle, int number, int x, int y) {
-    if (number < 0 || number > 9) return;
-
-    for (int row = 0; row < 6; row++) {
-        uint8_t bitmap_row = small_font_6x6[number][row];
-        for (int col = 0; col < 6; col++) {
-            if (bitmap_row & (1 << (5 - col))) {
-                ssd1306_set_pixel(handle, x + col, y + row, false);
-            }
-        }
-    }
-}
-
 // Helper function to convert upload result enum to text for display
 static const char *upload_result_to_text(upload_result_t r)
 {
@@ -141,94 +113,6 @@ static const char *upload_result_to_text(upload_result_t r)
         case UPLOAD_SERVER_ERROR: return "SERVER ERROR";
         case UPLOAD_SKIPPED:      return "NO UPLOAD";
         default:                  return "UPLOAD FAIL";
-    }
-}
-
-// Function to display small text at specific coordinates
-void display_small_text(ssd1306_handle_t handle, const char *text, int x, int y) {
-    int current_x = x;
-    while (*text) {
-        if (*text >= '0' && *text <= '9') {
-            display_small_number(handle, *text - '0', current_x, y);
-            current_x += 7; // 6 pixels width + 1 pixel spacing
-        } else if (*text == 'C') {
-            // C character (4x6): 01110, 10000, 10000, 10000, 10000, 01110
-            ssd1306_set_pixel(handle, current_x + 1, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 1, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 3, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 4, false);
-            ssd1306_set_pixel(handle, current_x + 1, y + 5, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 5, false);
-            current_x += 5;
-        } else if (*text == 'h') {
-            // h character (4x6): 10000, 10000, 11110, 10001, 10001, 10001
-            ssd1306_set_pixel(handle, current_x + 0, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 1, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 3, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 4, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 5, false);
-            ssd1306_set_pixel(handle, current_x + 1, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 3, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 4, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 5, false);
-            current_x += 5;
-        } else if (*text == 'P') {
-            // P character (4x6): 11110, 10001, 10001, 11110, 10000, 10000
-            ssd1306_set_pixel(handle, current_x + 0, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 1, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 1, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 3, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 4, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 5, false);
-            ssd1306_set_pixel(handle, current_x + 1, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 1, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 1, false);
-            current_x += 5;
-        } else if (*text == 'a') {
-            // a character (4x6): 01110, 10001, 10001, 01111, 00001, 01110
-            ssd1306_set_pixel(handle, current_x + 1, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 1, false);
-            ssd1306_set_pixel(handle, current_x + 3, y + 1, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 1, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 3, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 3, false);
-            ssd1306_set_pixel(handle, current_x + 3, y + 3, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 4, false);
-            ssd1306_set_pixel(handle, current_x + 3, y + 4, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 5, false);
-            ssd1306_set_pixel(handle, current_x + 3, y + 5, false);
-            current_x += 5;
-        } else if (*text == 'm') {
-            // m character (6x6): 100001, 110011, 101101, 100001, 100001, 100001
-            ssd1306_set_pixel(handle, current_x + 0, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 5, y + 0, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 1, false);
-            ssd1306_set_pixel(handle, current_x + 1, y + 1, false);
-            ssd1306_set_pixel(handle, current_x + 3, y + 1, false);
-            ssd1306_set_pixel(handle, current_x + 4, y + 1, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 2, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 3, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 5, y + 2, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 3, false);
-            ssd1306_set_pixel(handle, current_x + 5, y + 3, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 4, false);
-            ssd1306_set_pixel(handle, current_x + 5, y + 4, false);
-            ssd1306_set_pixel(handle, current_x + 0, y + 5, false);
-            ssd1306_set_pixel(handle, current_x + 5, y + 5, false);
-            current_x += 7;
-        }
-        text++;
     }
 }
 
@@ -290,8 +174,8 @@ void display_pressure_page(float pressure)
     ssd1306_clear_display(ssd1306_handle, false);
 
     // Draw barometer illustration on the right side (x=70, y=35)
-    int gauge_x = 65;  // Center of gauge
-    int gauge_y = 35;   // Center vertically
+    int gauge_x = 55;  // Center of gauge
+    int gauge_y = 40;   // Center vertically
 
     // Outer circle
     ssd1306_set_circle(ssd1306_handle, gauge_x, gauge_y, 18, false);
@@ -324,9 +208,9 @@ void display_pressure_page(float pressure)
     ssd1306_set_line(ssd1306_handle, gauge_x, gauge_y, needle_x, needle_y, false);
 
     // Pressure scale labels on the left side of gauge
-    display_small_text(ssd1306_handle, "900hPa", 85, 16);   // Left side of gauge
-    display_small_text(ssd1306_handle, "1000hPa", 85, 32);  // Bottom of gauge
-    display_small_text(ssd1306_handle, "1100hPa", 85, 48);  // Right side of gauge
+    display_small_text(ssd1306_handle, "900hPa", 75, 20);   // Left side of gauge
+    display_small_text(ssd1306_handle, "1000hPa", 75, 36);  // Bottom of gauge
+    display_small_text(ssd1306_handle, "1100hPa", 75, 52);  // Right side of gauge
 
     // Display pressure value and title on the left side
     ssd1306_display_text(ssd1306_handle, 0, "PRESSURE", false);
@@ -402,12 +286,12 @@ void display_humidity_page(float humidity)
     // Draw water drop illustration on the right side
     int drop_x = 75;  // Center of drop
     int drop_y = 35;  // Center vertically
-    int Rad = 8;
+    int Rad = 12;
 
     // Water drop shape
     ssd1306_set_circle(ssd1306_handle, drop_x, drop_y + Rad, Rad, false);  // Bottom circle
     //Clear top half of the circle to create drop shape
-    for (int y = drop_y; y < drop_y + 8; y++) {
+    for (int y = drop_y; y < drop_y + Rad; y++) {
         ssd1306_set_line(ssd1306_handle, drop_x - Rad, y, drop_x + Rad, y, true);
     }
     ssd1306_set_rectangle(ssd1306_handle, drop_x - Rad, drop_y - Rad, 2 * Rad, 2 * Rad , true); // Clear top of the circle to create drop shape
@@ -417,8 +301,8 @@ void display_humidity_page(float humidity)
     //ssd1306_set_line(ssd1306_handle, drop_x - 4, drop_y - 5, drop_x + 4, drop_y - 5, false);  // Top
 
     // Fill drop based on humidity level
-    int fill_levels = (int)(humidity / 10.0f);  // 0-10 levels
-    if (fill_levels > 10) fill_levels = 10;
+    int fill_levels = (int)(humidity / 6.6f);  // 0-15 levels
+    if (fill_levels > 15) fill_levels = 15;
     if (fill_levels < 0) fill_levels = 0;
 
     for (int i = 0; i < fill_levels; i++) {
@@ -430,17 +314,17 @@ void display_humidity_page(float humidity)
             ssd1306_set_line(ssd1306_handle, drop_x - (Rad - 2) , y, drop_x + (Rad - 2) , y, false);
         }
         else {
-            ssd1306_set_line(ssd1306_handle, drop_x - (Rad)/2 + (i - Rad / 2 - 1) , y, drop_x + (Rad)/2 - (i - Rad / 2 - 1) , y, false);
+            ssd1306_set_line(ssd1306_handle, drop_x - (Rad)/2 + (i - Rad / 2 - 3) , y, drop_x + (Rad)/2 - (i - Rad / 2 - 3) , y, false);
         }
     }
 
     // Humidity scale labels
-    display_small_text(ssd1306_handle, "100%", 95, 25);  // Top
-    ssd1306_set_line(ssd1306_handle, drop_x + 8, 27, 93, 27, false); // Top scale line
-    display_small_text(ssd1306_handle, "50%", 95, 37);   // Middle
-    ssd1306_set_line(ssd1306_handle, drop_x + Rad + 5, 42, 93, 39, false); // Middle scale line
-    display_small_text(ssd1306_handle, "0%", 95, 50);    // Bottom
-    ssd1306_set_line(ssd1306_handle, drop_x + 8, 52, 93, 52, false); // Bottom scale line
+    display_small_text(ssd1306_handle, "100%", 100, 25);  // Top
+    ssd1306_set_line(ssd1306_handle, drop_x + Rad, 27, 97, 27, false); // Top scale line
+    display_small_text(ssd1306_handle, "50%", 100, 42);   // Middle
+    ssd1306_set_line(ssd1306_handle, drop_x + Rad + 5, 45, 97, 45, false); // Middle scale line
+    display_small_text(ssd1306_handle, "0%", 100, 55);    // Bottom
+    ssd1306_set_line(ssd1306_handle, drop_x + Rad, 57, 97, 57, false); // Bottom scale line
 
     // Display humidity value and title
     ssd1306_display_text(ssd1306_handle, 0, "HUMIDITY", false);
@@ -755,7 +639,7 @@ void display_light_page(int32_t lux)
 
     ssd1306_display_text(ssd1306_handle, 0, buf, false);
     ssd1306_display_text(ssd1306_handle, 4, cloud_str, false);
-    ssd1306_set_bitmap(ssd1306_handle, 64, 24, to_display_icon, 32, 32, false);
+    ssd1306_set_bitmap(ssd1306_handle, 80, 24, to_display_icon, 32, 32, false);
     ssd1306_display_pages(ssd1306_handle);
 }
 

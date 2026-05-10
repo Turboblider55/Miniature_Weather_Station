@@ -60,6 +60,8 @@ bmp280_handle_t bmp280_handle;
 bh1750_handle_t bh1750_handle;
 static esp_timer_handle_t page_timer_handle;
 
+measurement_t m;
+
 // Global variable to hold the latest measurement for display and upload
 
 /* Use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
@@ -175,7 +177,7 @@ static bool perform_measurement(measurement_t *m)
     i2c_master_bus_handle_t i2c_bus_handle_bmp;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_bmp, &i2c_bus_handle_bmp));
     
-    vTaskDelay(pdMS_TO_TICKS(166)); // Short delay to ensure bus is ready before BMP280 initialization
+    vTaskDelay(pdMS_TO_TICKS(20)); // Short delay to ensure bus is ready before BMP280 initialization
 
     // Initialize BMP280
     //
@@ -195,8 +197,6 @@ static bool perform_measurement(measurement_t *m)
     gpio_reset_pin(3); // Reset SDA pin after BMP280
     gpio_reset_pin(5); // Reset SCL pin after BMP280
 
-    bh1750_handle_t bh1750_handle;
-
     i2c_master_bus_handle_t i2c_bus_handle_light;
     i2c_master_bus_config_t i2c_bus_cfg_light = {
         .i2c_port = I2C_NUM_1,
@@ -210,7 +210,7 @@ static bool perform_measurement(measurement_t *m)
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg_light, &i2c_bus_handle_light));
     ESP_ERROR_CHECK(bh1750_init(&bh1750_handle, i2c_bus_handle_light));
 
-    vTaskDelay(pdMS_TO_TICKS(166)); // Short delay to ensure bus is ready before BH1750 reading
+    vTaskDelay(pdMS_TO_TICKS(20)); // Short delay to ensure bus is ready before BH1750 reading
 
     if (bh1750_read_lux(&bh1750_handle, &lux) == ESP_OK) {
         ESP_LOGI(TAG, "BH1750 light level: %.2f lux", lux);
@@ -234,17 +234,32 @@ static bool perform_measurement(measurement_t *m)
     // Update global measurement struct for display and upload
     m->timestamp_utc = timestamp;
 
-    m->temperature_c_x100 = temperature;
-    m->humidity_x100      = humidity;
-    m->pressure_hpa_x100  = pressure;
-    m->altitude_m_x10     = altitude;
+    m->temperature_c_x100 = (uint16_t) temperature * 100;
+    m->humidity_x100      = (uint16_t) humidity * 100;
+    m->pressure_hpa_x100  = (uint16_t) pressure * 100;
+    m->altitude_m_x10     = (uint16_t) altitude * 10;
 
     /* ENS160 inactive for now */
     m->tvoc_ppb = -1;
     m->eco2_ppm = -1;
 
+    //Lux and cloud index are already converted to fixed-point in perform_measurement()
+    // m.lux_x100 *= 100; // Convert to fixed-point representation for storage
+    // m.cloud_index *= 100; // Convert to fixed-point representation for storage
+
     m->lux = (int32_t)(lux); // Convert to fixed-point representation for storage
     m->cloud_index = (uint16_t)(cloud_index); // Convert to fixed-point representation for storage
+
+    ESP_LOGI(TAG,"Time=%lld, Temp=%.2f C, Humidity=%.2f %%, Pressure=%.2f hPa, Altitude=%.2f m, Lux=%.2f, Cloud Index=%.2f",
+                m->timestamp_utc,
+                m->temperature_c_x100 / 100.0f,
+                m->humidity_x100 / 100.0f,
+                m->pressure_hpa_x100 / 100.0f,
+                m->altitude_m_x10 / 10.0f,
+                m->lux / 100.0f,
+                m->cloud_index / 100.0f
+            );
+
     return true;
 }
 
@@ -258,20 +273,9 @@ void handle_state_measure_and_store(void)
 
         measurement_scheduler_acknowledge();
 
-        measurement_t m;
-
         perform_measurement(&m); // Read sensors and update global variables
 
         latest_measurement_valid = true;
-
-        m.temperature_c_x100 *= 100; // Convert to fixed-point representation for storage
-        m.humidity_x100      *= 100;    
-        m.pressure_hpa_x100  *= 100;
-        m.altitude_m_x10     *= 10;
-
-        //Lux and cloud index are already converted to fixed-point in perform_measurement()
-        // m.lux_x100 *= 100; // Convert to fixed-point representation for storage
-        // m.cloud_index *= 100; // Convert to fixed-point representation for storage
 
         measurement_store(&m);
 
@@ -353,26 +357,21 @@ void handle_state_display(void)
             return;
         }
 
-        measurement_t m; // Local variable to hold the latest measurement for display
-
-        //This is for the display to show updated sensor values more frequently, even if the measurement scheduler has not triggered a new measurement yet. It will read the latest sensor values and update the display every 10 seconds based on the timer, while the measurement scheduler will trigger actual measurements every 15 seconds. This way, if the measurement scheduler triggers a new measurement, it will be reflected on the display within at most 10 seconds when the page update timer expires.
-        perform_measurement(&m); // Read sensors and update global variables
-
         display_sensor_data_pages(
-            m.temperature_c_x100 ,
-            m.humidity_x100 ,
-            m.pressure_hpa_x100 ,
-            m.altitude_m_x10 ,
+            m.temperature_c_x100 / 100.f,
+            m.humidity_x100 / 100.f,
+            m.pressure_hpa_x100 / 100.f,
+            m.altitude_m_x10 / 100.f,
             m.lux
         );
 
         ESP_LOGI(TAG, "Temperature: %.2f C, Humidity: %.2f %%, Pressure: %.2f hPa, Altitude: %.2f m, Lux: %.2f lux, Cloud Index: %.2f",
-                    (float)m.temperature_c_x100 ,
-                    (float)m.humidity_x100 ,
-                    (float)m.pressure_hpa_x100 ,
-                    (float)m.altitude_m_x10 ,
-                    (float)m.lux,
-                    (float)m.cloud_index 
+                    (float)m.temperature_c_x100 / 100.0f,
+                    (float)m.humidity_x100  / 100.0f,
+                    (float)m.pressure_hpa_x100  / 100.0f,
+                    (float)m.altitude_m_x10  / 100.0f,
+                    (float)m.lux / 100.0f,
+                    (float)m.cloud_index  / 100.0f
                 );
         
     }
@@ -443,6 +442,8 @@ void app_main(void)
     PageUpdateTimerStart(10); // Update display every 10 seconds
 
     measurement_clear_all(); // Clear any existing measurements on startup for clean testing
+
+    perform_measurement(&m);
 
     while (1) {
    

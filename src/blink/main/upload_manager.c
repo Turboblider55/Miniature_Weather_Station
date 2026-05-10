@@ -68,6 +68,8 @@ static bool build_json_payload(char *buf, size_t buf_len, uint32_t count)
         cJSON_AddStringToObject(obj, "measured_at", ts_buf);
         cJSON_AddNumberToObject(obj, "lux", (int32_t)m.lux);
         cJSON_AddNumberToObject(obj, "cloud_index", (int16_t)m.cloud_index);
+        cJSON_AddNumberToObject(obj,"eco2_ppm",m.eco2_ppm);
+        cJSON_AddNumberToObject(obj,"tvoc_ppb",m.tvoc_ppb);
         cJSON_AddItemToArray(root, obj);
     }
 
@@ -141,8 +143,6 @@ upload_result_t upload_manager_try_upload_one_batch(void)
 
     esp_http_client_set_header(client, "apikey", SUPABASE_API_KEY);
     // Note: For Supabase, the API key is enough for authentication.
-    esp_http_client_set_header(client, "Authorization",
-                                "Bearer " SUPABASE_API_KEY);
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_header(client, "Accept-Encoding", "identity");
     esp_http_client_set_header(client, "User-Agent", "ESP32-weather-station ID: "__STRINGIFY(STATION_ID));

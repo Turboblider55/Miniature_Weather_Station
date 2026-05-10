@@ -15,7 +15,7 @@ const int TOTAL_PAGES = 7;
 
 // Small 6x6 font bitmaps for numbers 0-9 (6 pixels wide, 6 pixels high)
 // Bit 5 = leftmost pixel, bit 0 = rightmost pixel
-const uint8_t small_font_6x6[10][6] = {
+const uint8_t small_font_6x6[11][6] = {
     {0x1E, 0x21, 0x21, 0x21, 0x21, 0x1E}, // 0: 011110, 100001, 100001, 100001, 100001, 011110
     {0x08, 0x18, 0x08, 0x08, 0x08, 0x1C}, // 1: 001000, 011000, 001000, 001000, 001000, 011100
     {0x1E, 0x01, 0x0E, 0x10, 0x20, 0x3F}, // 2: 011110, 000001, 001110, 010000, 100000, 111111
@@ -25,7 +25,8 @@ const uint8_t small_font_6x6[10][6] = {
     {0x1E, 0x20, 0x3E, 0x21, 0x21, 0x1E}, // 6: 011110, 100000, 111110, 100001, 100001, 011110
     {0x3F, 0x01, 0x02, 0x04, 0x08, 0x08}, // 7: 111111, 000001, 000010, 000100, 001000, 001000
     {0x1E, 0x21, 0x1E, 0x21, 0x21, 0x1E}, // 8: 011110, 100001, 011110, 100001, 100001, 011110
-    {0x1E, 0x21, 0x1F, 0x01, 0x01, 0x1E}  // 9: 011110, 100001, 011111, 000001, 000001, 011110
+    {0x1E, 0x21, 0x1F, 0x01, 0x01, 0x1E},  // 9: 011110, 100001, 011111, 000001, 000001, 011110
+    {0x0c, 0x12, 0x12, 0x1e, 0x12, 0x12}  // a: 001100, 010010, 010010, 011110, 010010, 010010
 };
 
 const uint8_t icon_sun_32[128] = {
@@ -735,22 +736,25 @@ void display_light_page(int32_t lux)
     strcpy(cloud_str, cloud_label(cloud_index));
     
     int icon_index = cloud_index_to_icon(cloud_index);
-    uint8_t to_display_icon[128] = {0}; // 24x24 icon buffer (3 bytes per row)
+    const uint8_t *to_display_icon; 
 
     if(icon_index == 0) {
-        memcpy(to_display_icon, icon_sun_32, sizeof(icon_sun_32));
+        to_display_icon = icon_sun_32;
     } else if(icon_index == 1) {
-        memcpy(to_display_icon, icon_partly_cloud_32, sizeof(icon_partly_cloud_32));
+        //memcpy(to_display_icon, icon_partly_cloud_32, sizeof(icon_partly_cloud_32));
+        to_display_icon = icon_partly_cloud_32;
     } else if(icon_index == 2) {
-        memcpy(to_display_icon, icon_cloud_32, sizeof(icon_cloud_32));
+        //memcpy(to_display_icon, icon_cloud_32, sizeof(icon_cloud_32));
+        to_display_icon = icon_cloud_32;
     } else {
-        memcpy(to_display_icon, icon_moon_32, sizeof(icon_moon_32));
+        //memcpy(to_display_icon, icon_moon_32, sizeof(icon_moon_32));
+        to_display_icon = icon_moon_32;
     }
 
     cloud_index = 100.0f - (cloud_index * 100.0f); // Invert cloud index so that higher values mean clearer skies
 
     ssd1306_display_text(ssd1306_handle, 0, buf, false);
-    ssd1306_display_text(ssd1306_handle, 2, cloud_str, false);
+    ssd1306_display_text(ssd1306_handle, 4, cloud_str, false);
     ssd1306_set_bitmap(ssd1306_handle, 64, 24, to_display_icon, 32, 32, false);
     ssd1306_display_pages(ssd1306_handle);
 }

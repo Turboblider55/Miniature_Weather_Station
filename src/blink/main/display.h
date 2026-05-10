@@ -14,7 +14,7 @@ extern const int TOTAL_PAGES;
 
 // Small 6x6 font bitmaps for numbers 0-9 (6 pixels wide, 6 pixels high)
 // Bit 5 = leftmost pixel, bit 0 = rightmost pixel
-extern const uint8_t small_font_6x6[10][6];
+extern const uint8_t small_font_6x6[11][6];
 
 // Function declarations
 void display_small_number(ssd1306_handle_t handle, int number, int x, int y);

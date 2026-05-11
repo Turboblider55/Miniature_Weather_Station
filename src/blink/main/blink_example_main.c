@@ -42,10 +42,11 @@
 #include "bh1750.h"
 #include "cloudiness.h"
 
+#include "esp_sleep.h"
+
 uint16_t tvoc, eco2;
 
 static const char *TAG = "weather_station";
-
 
 static bool display_force_update = false;
 static bool upload_in_progress = false;
@@ -53,6 +54,10 @@ static bool upload_in_progress = false;
 static bool upload_just_happened = false;
 static int upload_status_display_cycles = 0;
 #define UPLOAD_STATUS_DISPLAY_CYCLES 2
+
+#define WAKE_INTERVAL_SECONDS 60
+#define DISPLAY_ACTIVE_TIME_MS 3000   // 3 seconds display before sleep
+const bool ESP_SHOULD_SLEEP = false;
 
 static ens160_aht21_handle_t ens160_aht21_handle;
 ssd1306_handle_t ssd1306_handle;
@@ -76,6 +81,8 @@ float lux = 0;
 float cloud_index = 0;
 bool page_update_needed = true; // Force initial update on startup
 
+//RTC variable
+RTC_DATA_ATTR int boot_count = 0;
 
 static void PageUpdateTimerCallback(void *arg)
 {
@@ -383,7 +390,28 @@ void handle_state_idle(void)
 {
     upload_attempted_this_cycle = false;
     latest_measurement_valid = false;
-    device_state = STATE_MEASURE;
+
+    if(ESP_SHOULD_SLEEP){
+
+        ESP_LOGI(TAG, "Entering pre-sleep display phase");
+
+        // Show final display for a short time
+        vTaskDelay(pdMS_TO_TICKS(DISPLAY_ACTIVE_TIME_MS));
+
+        ESP_LOGI(TAG, "Preparing deep sleep for %d seconds", WAKE_INTERVAL_SECONDS);
+
+        // Configure timer wakeup
+        esp_sleep_enable_timer_wakeup(WAKE_INTERVAL_SECONDS * 1000000ULL);
+
+        ESP_LOGI(TAG, "Entering deep sleep now...");
+        vTaskDelay(pdMS_TO_TICKS(100)); // UART flush safety
+
+        esp_deep_sleep_start();
+
+    }
+    else{
+        device_state = STATE_MEASURE;
+    }
 }
 
 void app_main(void)
@@ -441,9 +469,22 @@ void app_main(void)
 
     PageUpdateTimerStart(10); // Update display every 10 seconds
 
-    measurement_clear_all(); // Clear any existing measurements on startup for clean testing
+    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
 
+    //Undefined wakeup cause -> Reset / restart after power loss or power down
+    if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {
+        ESP_LOGW(TAG, "Cold boot detected → clearing measurements");
+        measurement_clear_all();
+    } else {
+        ESP_LOGI(TAG, "Wake from deep sleep → preserving measurements");
+    }
+
+    //Just for showing data and not waiting for the measurement scheduler to make it's first measurement
     perform_measurement(&m);
+
+    //Proper bootup counting
+    boot_count++;
+    ESP_LOGI(TAG, "Boot count: %d", boot_count);
 
     while (1) {
    

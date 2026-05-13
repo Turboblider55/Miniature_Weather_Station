@@ -55,9 +55,12 @@ static bool upload_just_happened = false;
 static int upload_status_display_cycles = 0;
 #define UPLOAD_STATUS_DISPLAY_CYCLES 2
 
-#define WAKE_INTERVAL_SECONDS 60
+#define WAKE_INTERVAL_SECONDS 180
 #define DISPLAY_ACTIVE_TIME_MS 3000   // 3 seconds display before sleep
 const bool ESP_SHOULD_SLEEP = false;
+
+//Default value unknown
+esp_sleep_wakeup_cause_t cause = ESP_SLEEP_WAKEUP_UNDEFINED;
 
 static ens160_aht21_handle_t ens160_aht21_handle;
 ssd1306_handle_t ssd1306_handle;
@@ -80,6 +83,9 @@ float pressure, altitude = 0;
 float lux = 0;
 float cloud_index = 0;
 bool page_update_needed = true; // Force initial update on startup
+
+static int UploadAttempt = 0;
+static int BatchCount = 1;
 
 //RTC variable
 RTC_DATA_ATTR int boot_count = 0;
@@ -116,6 +122,42 @@ static void PageUpdateTimerStart(uint32_t period_seconds)
 
     ESP_LOGI(TAG, "Page update timer started (%lu s)", (unsigned long)period_seconds);
 }
+
+bool TryToSyncTime(void){
+
+    /* Initialize time handling */
+    time_manager_init();
+
+    /* Sync time if needed */
+    if (!time_manager_sync_if_needed()) {
+        ESP_LOGW(TAG, "Time not available yet, running offline");
+        return false;
+    } else {
+        int64_t now;
+        if (time_manager_get_timestamp(&now)) {
+            ESP_LOGI(TAG, "Current UTC time: %lld", (long long)now);
+        }
+    }
+
+    return true;
+}
+
+bool TryToConnectToWifi(void){
+    // Initialize WiFi and wait for connection
+    wifi_manager_init();
+    // Block until WiFi is connected (optional, can run in offline mode if connection fails)
+    wifi_manager_wait_connected();
+
+    // Display network status
+    if (wifi_manager_is_connected()) {
+        ESP_LOGI(TAG, "Network features enabled");
+        return true;
+    } else {
+        ESP_LOGW(TAG, "Running in offline mode");
+    }
+    return false;
+}
+
 
 static bool perform_measurement(measurement_t *m)
 {
@@ -241,10 +283,10 @@ static bool perform_measurement(measurement_t *m)
     // Update global measurement struct for display and upload
     m->timestamp_utc = timestamp;
 
-    m->temperature_c_x100 = (uint16_t) temperature * 100;
-    m->humidity_x100      = (uint16_t) humidity * 100;
-    m->pressure_hpa_x100  = (uint16_t) pressure * 100;
-    m->altitude_m_x10     = (uint16_t) altitude * 10;
+    m->temperature_c_x100 = (uint16_t) (temperature * 100); //first multiply, then convert
+    m->humidity_x100      = (uint16_t) (humidity * 100);
+    m->pressure_hpa_x100  = (uint16_t) (pressure * 100);
+    m->altitude_m_x10     = (uint16_t) (altitude * 10);
 
     /* ENS160 inactive for now */
     m->tvoc_ppb = -1;
@@ -263,8 +305,8 @@ static bool perform_measurement(measurement_t *m)
                 m->humidity_x100 / 100.0f,
                 m->pressure_hpa_x100 / 100.0f,
                 m->altitude_m_x10 / 10.0f,
-                m->lux / 100.0f,
-                m->cloud_index / 100.0f
+                m->lux,
+                m->cloud_index 
             );
 
     return true;
@@ -274,7 +316,7 @@ static bool latest_measurement_valid = false;
 
 void handle_state_measure_and_store(void)
 {
-    if (measurement_scheduler_should_measure()) {
+    if (measurement_scheduler_should_measure() || (ESP_SHOULD_SLEEP && cause != ESP_SLEEP_WAKEUP_UNDEFINED)) {
 
         ESP_LOGI(TAG, "Measurement triggered");
 
@@ -300,7 +342,22 @@ static bool upload_attempted_this_cycle = false;
 
 void handle_state_upload(void)
 {
-    if(measurement_count() >= 5) {
+    if(measurement_count() >= 5 * BatchCount) {
+
+        if(!wifi_manager_is_connected()){
+
+            bool TryResult = TryToConnectToWifi();
+
+            //If there's no wifi connection, dont even try to upload, increase needed batch size and skip upload
+            if(!TryResult){
+                ESP_LOGW(TAG, "Skipping upload, WiFi not connected");
+                BatchCount++;
+                device_state = STATE_DISPLAY;
+                return;
+            }
+        }
+
+        TryToSyncTime();
 
         // ready to upload
         ESP_LOGI(TAG, "Ready to upload measurements (have %d)", measurement_count());
@@ -312,12 +369,12 @@ void handle_state_upload(void)
             ESP_LOGI(TAG, "Measurement %d: Time=%lld, Temp=%.2f C, Humidity=%.2f %%, Pressure=%.2f hPa, Altitude=%.2f m, Lux=%.2f, Cloud Index=%.2f",
                 i,
                 (long long)batch[i].timestamp_utc,
-                batch[i].temperature_c_x100 / 100.0,
-                batch[i].humidity_x100 / 100.0,
-                batch[i].pressure_hpa_x100 / 100.0,
-                batch[i].altitude_m_x10 / 10.0,
-                batch[i].lux / 100.0,
-                batch[i].cloud_index / 100.0
+                batch[i].temperature_c_x100 / 100.0f,
+                batch[i].humidity_x100 / 100.0f,
+                batch[i].pressure_hpa_x100 / 100.0f,
+                batch[i].altitude_m_x10 / 10.0f,
+                batch[i].lux ,
+                batch[i].cloud_index 
             );
         }
 
@@ -326,8 +383,20 @@ void handle_state_upload(void)
         upload_in_progress = true;
         display_force_update = true;
 
-        upload_manager_try_upload_one_batch();
+        upload_result_t res = upload_manager_try_upload_one_batch(BatchCount);
+
+        //Upload worked, set batch counter to 1
+        if( res == UPLOAD_OK)
+            BatchCount = 1;
+
+        //Upload failed, increase attempt count
+        if(res == UPLOAD_SKIPPED || res == UPLOAD_AUTH_ERROR || res == UPLOAD_NET_ERROR || res == UPLOAD_SERVER_ERROR)
+            UploadAttempt++;
         
+        //Tried to upload 5 or more times, increase needed batch count so it wont get stuck at uploading
+        if(UploadAttempt >= 5)
+            BatchCount ++;
+
         upload_in_progress = false;
         display_force_update = true;
 
@@ -368,7 +437,7 @@ void handle_state_display(void)
             m.temperature_c_x100 / 100.f,
             m.humidity_x100 / 100.f,
             m.pressure_hpa_x100 / 100.f,
-            m.altitude_m_x10 / 100.f,
+            m.altitude_m_x10 / 10.f,
             m.lux
         );
 
@@ -377,8 +446,8 @@ void handle_state_display(void)
                     (float)m.humidity_x100  / 100.0f,
                     (float)m.pressure_hpa_x100  / 100.0f,
                     (float)m.altitude_m_x10  / 100.0f,
-                    (float)m.lux / 100.0f,
-                    (float)m.cloud_index  / 100.0f
+                    (float)m.lux ,
+                    (float)m.cloud_index 
                 );
         
     }
@@ -398,16 +467,28 @@ void handle_state_idle(void)
         // Show final display for a short time
         vTaskDelay(pdMS_TO_TICKS(DISPLAY_ACTIVE_TIME_MS));
 
-        ESP_LOGI(TAG, "Preparing deep sleep for %d seconds", WAKE_INTERVAL_SECONDS);
-
         // Configure timer wakeup
-        esp_sleep_enable_timer_wakeup(WAKE_INTERVAL_SECONDS * 1000000ULL);
 
-        ESP_LOGI(TAG, "Entering deep sleep now...");
-        vTaskDelay(pdMS_TO_TICKS(100)); // UART flush safety
+        int64_t now;
+        time_manager_get_timestamp(&now);
 
-        esp_deep_sleep_start();
+        int64_t next = ((now / WAKE_INTERVAL_SECONDS) + 1) * WAKE_INTERVAL_SECONDS;
+        int64_t sleep_time = next - now;
 
+        //If sleep time is more than 5 seconds it it worth going to sleep, otherwise not 
+        if (sleep_time > 5) {
+            
+            //sleep_time = WAKE_INTERVAL_SECONDS;
+        
+            ESP_LOGI(TAG, "Preparing deep sleep for %d seconds", sleep_time);
+
+            esp_sleep_enable_timer_wakeup(sleep_time * 1000000ULL);
+
+            ESP_LOGI(TAG, "Entering deep sleep now...");
+            vTaskDelay(pdMS_TO_TICKS(100)); // UART flush safety
+
+            esp_deep_sleep_start();
+        }
     }
     else{
         device_state = STATE_MEASURE;
@@ -439,37 +520,17 @@ void app_main(void)
     ssd1306_clear_display(ssd1306_handle, false);
     ssd1306_display_text(ssd1306_handle, 0, "OLED Ready", false);
 
-    // Initialize WiFi and wait for connection
-    wifi_manager_init();
-    // Block until WiFi is connected (optional, can run in offline mode if connection fails)
-    wifi_manager_wait_connected();
+    TryToConnectToWifi();
 
-    // Display network status
-    if (wifi_manager_is_connected()) {
-        ESP_LOGI(TAG, "Network features enabled");
-    } else {
-        ESP_LOGW(TAG, "Running in offline mode");
-    }
-
-    /* Initialize time handling */
-    time_manager_init();
-
-    /* Sync time if needed */
-    if (!time_manager_sync_if_needed()) {
-        ESP_LOGW(TAG, "Time not available yet, running offline");
-    } else {
-        int64_t now;
-        if (time_manager_get_timestamp(&now)) {
-            ESP_LOGI(TAG, "Current UTC time: %lld", (long long)now);
-        }
-    }
+    TryToSyncTime();
 
     // Initialize measurement scheduler to trigger every 30 seconds
-    measurement_scheduler_init(30);  // 30 seconds
+    //This part is still questionable because of the deep sleep, if deep sleep is not needed when charging then this code is needed.
+    measurement_scheduler_init(180);  // 180 seconds - 3 mins
 
-    PageUpdateTimerStart(10); // Update display every 10 seconds
+    PageUpdateTimerStart(30); // Update display every 30 seconds
 
-    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    cause = esp_sleep_get_wakeup_cause();
 
     //Undefined wakeup cause -> Reset / restart after power loss or power down
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {

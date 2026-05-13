@@ -32,7 +32,7 @@ typedef enum {
  * @return UPLOAD_SERVER_ERROR Server error occurred
  * @return UPLOAD_UNKNOWN_ERROR An unknown error occurred
  */
-upload_result_t upload_manager_try_upload_one_batch(void);
+upload_result_t upload_manager_try_upload_one_batch(int BatchCount);
     
 upload_result_t upload_manager_get_last_result(void);
 

@@ -12,12 +12,32 @@ h1 {
 h2 {
     margin-top: 30px;
 }
+#latestMeasurement {
+    background: linear-gradient(135deg, white);
+    color: black;
+    padding: 30px;
+    border-radius: 24px;
+    margin-bottom: 30px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+}
+#stationBox,
+#latestMeasurement {
+    max-width: 900px;
+}
 
 #stationBox,
 #measurements {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 16px;
+}
+.chart-card {
+    background: white;
+    padding: 22px;
+    border-radius: 16px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+    margin-bottom: 30px;
+    height: 360px;
 }
 
 .card {

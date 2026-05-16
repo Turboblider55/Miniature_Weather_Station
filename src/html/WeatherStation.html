@@ -4,12 +4,21 @@
     <meta charset="UTF-8">
     <title>Weather Station</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
     <h1>Weather Station</h1>
 
     <div id="stationBox"></div>
+
+    <h2>Aktuális mérés</h2>
+    <div id="latestMeasurement"></div>
+
+    <h2>Elmúlt 30 mérés grafikonja</h2>
+    <div class="chart-card">
+        <canvas id="weatherChart"></canvas>
+    </div>
 
     <h2>Legutóbbi mérések</h2>
     <div id="measurements"></div>

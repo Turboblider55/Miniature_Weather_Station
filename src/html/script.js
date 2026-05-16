@@ -18,7 +18,7 @@ async function loadStations() {
 
     stationBox.innerHTML = data.map(station => `
         <div class="card">
-            <h2>${station.name}</h2>
+            <h3>${station.name}</h3>
             <p>Állapot: ${station.online ? 'Online' : 'Offline'}</p>
         </div>
     `).join('')
@@ -97,6 +97,8 @@ async function loadMeasurements() {
             <p><strong>Magasság:</strong> ${m.altitude_m_x10 / 10} m</p>
             <p><strong>Fény:</strong> ${m.lux ?? 'nincs adat'} lux</p>
             <p><strong>Felhő index:</strong> ${m.cloud_index ?? 'nincs adat'}</p>
+            <p><strong>Dátum:</strong> ${ m.measured_at ? new Date(m.measured_at).toLocaleString('hu-HU'): 'nincs adat'
+}</p>
         </div>
     `).join('')
 }
@@ -120,16 +122,26 @@ async function loadChartData() {
 
     const reversedData = data.reverse()
 
-    const labels = reversedData.map(m => {
-        if (m.measured_at) {
-            return new Date(m.measured_at).toLocaleTimeString('hu-HU', {
-                hour: '2-digit',
-                minute: '2-digit'
-            })
-        }
+const labels = reversedData.map(m => {
+    if (m.measured_at) {
 
-        return `#${m.id}`
-    })
+        const date = new Date(m.measured_at)
+
+        const day = date.toLocaleDateString('hu-HU', {
+            month: '2-digit',
+            day: '2-digit'
+        })
+
+        const time = date.toLocaleTimeString('hu-HU', {
+            hour: '2-digit',
+            minute: '2-digit'
+        })
+
+        return [day, time]
+    }
+
+    return [`#${m.id}`]
+})
 
     const temperatures = reversedData.map(m => m.temperature_c_x100 / 100)
     const humidities = reversedData.map(m => m.humidity_x100 / 100)

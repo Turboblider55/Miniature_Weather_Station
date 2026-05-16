@@ -202,7 +202,7 @@ void display_pressure_page(float pressure)
     if (pressure_normalized > 1.0f) pressure_normalized = 1.0f;
     if (pressure_normalized < 0.0f) pressure_normalized = 0.0f;
 
-    float angle = (pressure_normalized * 180.0f - 90.0f) * 3.14159f / 180.0f; // -90 to +90 degrees
+    float angle = (pressure_normalized * 180.0f - 90.0f) * M_PI / 180.0f; // -90 to +90 degrees
     int needle_x = gauge_x + (int)(11 * cosf(angle));
     int needle_y = gauge_y + (int)(11 * sinf(angle));
     ssd1306_set_line(ssd1306_handle, gauge_x, gauge_y, needle_x, needle_y, false);

@@ -16,6 +16,14 @@ typedef enum {
     UPLOAD_UNKNOWN_ERROR
 } upload_result_t;
 
+/* ---- CONFIG ---- */
+#define BATCH_SIZE 5
+
+#define SUPABASE_URL "https://hzucoiipjnfhnqjxtrgj.supabase.co/rest/v1/measurements"
+#define SUPABASE_API_KEY "sb_publishable_47ApWRf7T1esYfIBUWkRGg_VVbAVhp3"
+
+#define STATION_ID 1   // Must exist in your stations table
+#define MAX_BATCH_UPLOAD 4
 
 /**
  * @brief Try to upload exactly one batch of measurements.
@@ -32,7 +40,7 @@ typedef enum {
  * @return UPLOAD_SERVER_ERROR Server error occurred
  * @return UPLOAD_UNKNOWN_ERROR An unknown error occurred
  */
-upload_result_t upload_manager_try_upload_one_batch(int BatchCount);
+upload_result_t upload_manager_try_upload_one_batch(int *BatchCount);
     
 upload_result_t upload_manager_get_last_result(void);
 

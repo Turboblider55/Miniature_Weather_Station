@@ -18,19 +18,6 @@
 
 #define TAG "upload"
 
-/* ---- CONFIG ---- */
-#define BATCH_SIZE 5
-
-#define SUPABASE_URL "https://hzucoiipjnfhnqjxtrgj.supabase.co/rest/v1/measurements"
-#define SUPABASE_API_KEY "sb_publishable_47ApWRf7T1esYfIBUWkRGg_VVbAVhp3"
-
-#define SUPABASE_HOST "hzucoiipjnfhnqjxtrgj.supabase.co"
-#define SUPABASE_PORT 443
-#define SUPABASE_PATH "/rest/v1/measurements"
-
-#define STATION_ID 1   // Must exist in your stations table
-#define MAX_BATCH_UPLOAD 4
-
 static upload_result_t last_upload_result = UPLOAD_SKIPPED;
 
 
@@ -90,7 +77,7 @@ static bool build_json_payload(char *buf, size_t buf_len, uint32_t count)
     return true;
 }   
  
-upload_result_t upload_manager_try_upload_one_batch(int Batchcount)
+upload_result_t upload_manager_try_upload_one_batch(int *Batchcount)
 {
     /* ---- GATING ---- */
     if (!wifi_manager_is_connected()) {
@@ -112,8 +99,7 @@ upload_result_t upload_manager_try_upload_one_batch(int Batchcount)
         last_upload_result = UPLOAD_SKIPPED;
         return last_upload_result;
     }
-    for(size_t i = 0; i < fmin(MAX_BATCH_UPLOAD,Batchcount); i++){
-
+    for(size_t i = 0; i < fmin(MAX_BATCH_UPLOAD,*Batchcount); i++){
     
         /* ---- BUILD PAYLOAD ---- */
         static char json[1536];   // safe size for 5 measurements
@@ -215,7 +201,7 @@ upload_result_t upload_manager_try_upload_one_batch(int Batchcount)
             last_upload_result = UPLOAD_UNKNOWN_ERROR;
             return last_upload_result;
         }
-        
+        *Batchcount -= 1;
     }
 
   

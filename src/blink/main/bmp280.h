@@ -37,12 +37,13 @@ typedef struct {
     i2c_master_bus_handle_t bus_handle;
     i2c_master_dev_handle_t dev_handle;
     bmp280_calib_t calib;
+    int32_t t_fine;
 } bmp280_handle_t;
 
 // Function declarations
 esp_err_t bmp280_init(bmp280_handle_t *handle, i2c_master_bus_handle_t bus_handle);
 esp_err_t bmp280_read_calibration(bmp280_handle_t *handle);
-esp_err_t bmp280_read_raw_data(bmp280_handle_t *handle, int32_t *temperature, int32_t *pressure);
+esp_err_t bmp280_read_raw_data(bmp280_handle_t *handle, int32_t *adc_T, int32_t *adc_P);
 esp_err_t bmp280_compensate_temperature(bmp280_handle_t *handle, int32_t adc_T, int32_t *temperature);
 esp_err_t bmp280_compensate_pressure(bmp280_handle_t *handle, int32_t adc_P, int32_t adc_T, int32_t *pressure);
 esp_err_t bmp280_read_compensated_data(bmp280_handle_t *handle, float *temperature, float *pressure, float *altitude);

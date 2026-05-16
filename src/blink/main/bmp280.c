@@ -120,7 +120,7 @@ esp_err_t bmp280_read_calibration(bmp280_handle_t *handle)
 }
 
 // Read raw temperature and pressure data
-esp_err_t bmp280_read_raw_data(bmp280_handle_t *handle, int32_t *temperature, int32_t *pressure)
+esp_err_t bmp280_read_raw_data(bmp280_handle_t *handle, int32_t *adc_T, int32_t *adc_P)
 {
     uint8_t data[6];
 
@@ -136,8 +136,8 @@ esp_err_t bmp280_read_raw_data(bmp280_handle_t *handle, int32_t *temperature, in
     ESP_LOGD(TAG, "Raw data bytes: %02X %02X %02X %02X %02X %02X",
              data[0], data[1], data[2], data[3], data[4], data[5]);
 
-    *pressure = (data[0] << 12) | (data[1] << 4) | (data[2] >> 4);
-    *temperature = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4);
+    *adc_P = (data[0] << 12) | (data[1] << 4) | (data[2] >> 4);
+    *adc_T = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4);
 
     return ESP_OK;
 }
@@ -145,14 +145,12 @@ esp_err_t bmp280_read_raw_data(bmp280_handle_t *handle, int32_t *temperature, in
 // Compensate temperature reading
 esp_err_t bmp280_compensate_temperature(bmp280_handle_t *handle, int32_t adc_T, int32_t *temperature)
 {
-    static int32_t t_fine; // Static to maintain state between calls
-
     int32_t var1, var2, T;
     var1 = ((adc_T >> 3) - ((int32_t)handle->calib.T1 << 1));
     var2 = (var1 * ((int32_t)handle->calib.T2)) >> 11;
     var1 = ((((adc_T >> 4) - ((int32_t)handle->calib.T1)) * (((adc_T >> 4) - ((int32_t)handle->calib.T1)) >> 12)) * ((int32_t)handle->calib.T3)) >> 14;
-    t_fine = var1 + var2;
-    T = (t_fine * 5 + 128) >> 8;
+    handle->t_fine = var1 + var2;
+    T = (handle->t_fine * 5 + 128) >> 8;
     *temperature = T;
 
     return ESP_OK;
@@ -161,37 +159,43 @@ esp_err_t bmp280_compensate_temperature(bmp280_handle_t *handle, int32_t adc_T, 
 // Compensate pressure reading
 esp_err_t bmp280_compensate_pressure(bmp280_handle_t *handle, int32_t adc_P, int32_t adc_T, int32_t *pressure)
 {
-    static int32_t t_fine; // Static to maintain state between calls
-
     // First compensate temperature to get t_fine
-    int32_t temp;
-    bmp280_compensate_temperature(handle, adc_T, &temp);
+    // int32_t temp;
+    // bmp280_compensate_temperature(handle, adc_T, &temp);
 
-    int32_t var1, var2;
-    uint32_t p;
+    // Check status register
+    uint8_t status;
+    esp_err_t ret = i2c_master_transmit_receive(handle->dev_handle,
+                                     (uint8_t[]){BMP280_REG_STATUS}, 1,
+                                     &status, 1, -1);
+    ESP_LOGI(TAG, "BMP280 status: 0x%02X", status);
+    
 
-    var1 = (((int32_t)t_fine) >> 1) - (int32_t)64000;
-    var2 = (((var1 >> 2) * (var1 >> 2)) >> 11) * ((int32_t)handle->calib.P6);
-    var2 = var2 + ((var1 * ((int32_t)handle->calib.P5)) << 1);
-    var2 = (var2 >> 2) + (((int32_t)handle->calib.P4) << 16);
-    var1 = (((handle->calib.P3 * (((var1 >> 2) * (var1 >> 2)) >> 13)) >> 3) + ((((int32_t)handle->calib.P2) * var1) >> 1)) >> 18;
-    var1 = ((((32768 + var1)) * ((int32_t)handle->calib.P1)) >> 15);
+    int64_t var1, var2;
+    uint64_t p;
+
+    var1 = (((int64_t)handle->t_fine) >> 1) - (int64_t)64000;
+    var2 = (((var1 >> 2) * (var1 >> 2)) >> 11) * ((int64_t)handle->calib.P6);
+    var2 = var2 + ((var1 * ((int64_t)handle->calib.P5)) << 1);
+    var2 = (var2 >> 2) + (((int64_t)handle->calib.P4) << 16);
+    var1 = (((handle->calib.P3 * (((var1 >> 2) * (var1 >> 2)) >> 13)) >> 3) + ((((int64_t)handle->calib.P2) * var1) >> 1)) >> 18;
+    var1 = ((((32768 + var1)) * ((int64_t)handle->calib.P1)) >> 15);
 
     if (var1 == 0) {
         return ESP_FAIL; // avoid exception caused by division by zero
     }
 
-    p = (((uint32_t)(((int32_t)1048576) - adc_P) - (var2 >> 12))) * 3125;
+    p = (((uint64_t)(((int64_t)1048576) - adc_P) - (var2 >> 12))) * 3125;
 
     if (p < 0x80000000) {
-        p = (p << 1) / ((uint32_t)var1);
+        p = (p << 1) / ((uint64_t)var1);
     } else {
-        p = (p / (uint32_t)var1) * 2;
+        p = (p / (uint64_t)var1) * 2;
     }
 
-    var1 = (((int32_t)handle->calib.P9) * ((int32_t)(((p >> 3) * (p >> 3)) >> 13))) >> 12;
-    var2 = (((int32_t)(p >> 2)) * ((int32_t)handle->calib.P8)) >> 13;
-    p = (uint32_t)((int32_t)p + ((var1 + var2 + handle->calib.P7) >> 4));
+    var1 = (((int64_t)handle->calib.P9) * ((int64_t)(((p >> 3) * (p >> 3)) >> 13))) >> 12;
+    var2 = (((int64_t)(p >> 2)) * ((int64_t)handle->calib.P8)) >> 13;
+    p = (uint64_t)((int64_t)p + ((var1 + var2 + handle->calib.P7) >> 4));
 
     *pressure = (int32_t)p;
 
@@ -213,14 +217,16 @@ esp_err_t bmp280_read_compensated_data(bmp280_handle_t *handle, float *temperatu
     if (ret != ESP_OK) {
         return ret;
     }
-    *temperature = temp_comp / 100.0f;
+    *temperature = (float)temp_comp / 100.0f;
 
     ret = bmp280_compensate_pressure(handle, adc_P, adc_T, &press_comp);
     if (ret != ESP_OK) {
         return ret;
     }
-    *pressure = press_comp / 100.0f;  // Convert Pa to hPa
+    *pressure = (float)press_comp / 100.0f;  // Convert Pa to hPa
 
+    ESP_LOGI(TAG, "Pressure raw=%ld compensated=%ld", adc_P, press_comp);
+    
     // Debug logging
     ESP_LOGD(TAG, "Raw ADC - Pressure: %ld, Temperature: %ld", adc_P, adc_T);
     ESP_LOGD(TAG, "Compensated - Pressure PA: %ld, Pressure hPa: %.2f, Temp: %.2f", press_comp, *pressure, *temperature);

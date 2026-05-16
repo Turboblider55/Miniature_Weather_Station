@@ -56,6 +56,7 @@ static int upload_status_display_cycles = 0;
 #define UPLOAD_STATUS_DISPLAY_CYCLES 2
 
 #define WAKE_INTERVAL_SECONDS 180
+static bool MEASUREMENT_TIME_SET_PROPERLY = true;
 #define DISPLAY_ACTIVE_TIME_MS 3000   // 3 seconds display before sleep
 const bool ESP_SHOULD_SLEEP = false;
 
@@ -158,7 +159,6 @@ bool TryToConnectToWifi(void){
     return false;
 }
 
-
 static bool perform_measurement(measurement_t *m)
 {
     // This function can be used to trigger a measurement outside of the regular scheduler, if needed
@@ -181,7 +181,7 @@ static bool perform_measurement(measurement_t *m)
     i2c_master_bus_handle_t i2c_bus_handle_env;
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_config_env, &i2c_bus_handle_env));
 
-    vTaskDelay(pdMS_TO_TICKS(166)); // Short delay to ensure bus is ready before sensor initialization
+    vTaskDelay(pdMS_TO_TICKS(20)); // Short delay to ensure bus is ready before sensor initialization
 
     // Initialize ENS160 + AHT21 sensor module
     esp_err_t env_init_result = ens160_aht21_init(&ens160_aht21_handle, i2c_bus_handle_env);
@@ -196,6 +196,8 @@ static bool perform_measurement(measurement_t *m)
 
         return false;
     }
+
+    vTaskDelay(pdMS_TO_TICKS(100)); //Short delay so sensor has time to start up
 
     esp_err_t status = ens160_aht21_read_all_data(&ens160_aht21_handle, &temperature, &humidity);
 
@@ -237,9 +239,9 @@ static bool perform_measurement(measurement_t *m)
         return false;
     }
 
-    bmp280_read_compensated_data(&bmp280_handle, &temperature, &pressure, &altitude);
+    vTaskDelay(pdMS_TO_TICKS(100)); //Short delay so sensor has time to start up
 
-    time_manager_get_timestamp(&timestamp);
+    bmp280_read_compensated_data(&bmp280_handle, &temperature, &pressure, &altitude);
 
     i2c_master_bus_rm_device(bmp280_handle.dev_handle); // Remove BMP280 device from bus after reading
     i2c_del_master_bus(i2c_bus_handle_bmp); // Clean up the bus handle after BMP280
@@ -276,6 +278,8 @@ static bool perform_measurement(measurement_t *m)
     i2c_del_master_bus(i2c_bus_handle_light); // Clean up the bus handle after BH1750
     gpio_reset_pin(2); // Reset SDA pin after BH1750
     gpio_reset_pin(4); // Reset SCL pin after BH1750
+    
+    time_manager_get_timestamp(&timestamp);
 
     //Convert lux to cloud index (0-100 scale) based on reference lux for clear sky at the current location and time
     cloud_index = 100 - calculate_cloud_index(lux, CLOUDINESS_REFERENCE_LUX) * 100;  // Invert cloud index so that higher values mean clearer skies
@@ -285,8 +289,8 @@ static bool perform_measurement(measurement_t *m)
 
     m->temperature_c_x100 = (uint16_t) (temperature * 100); //first multiply, then convert
     m->humidity_x100      = (uint16_t) (humidity * 100);
-    m->pressure_hpa_x100  = (uint16_t) (pressure * 100);
-    m->altitude_m_x10     = (uint16_t) (altitude * 10);
+    m->pressure_hpa_x100  = (uint32_t) (pressure * 100);
+    m->altitude_m_x10     = (uint32_t) (altitude * 10);
 
     /* ENS160 inactive for now */
     m->tvoc_ppb = -1;
@@ -299,14 +303,14 @@ static bool perform_measurement(measurement_t *m)
     m->lux = (int32_t)(lux); // Convert to fixed-point representation for storage
     m->cloud_index = (uint16_t)(cloud_index); // Convert to fixed-point representation for storage
 
-    ESP_LOGI(TAG,"Time=%lld, Temp=%.2f C, Humidity=%.2f %%, Pressure=%.2f hPa, Altitude=%.2f m, Lux=%.2f, Cloud Index=%.2f",
+    ESP_LOGI(TAG,"Time=%lld, Temp=%.2f °C, Humidity=%.2f %%, Pressure=%.2f hPa, Altitude=%.2f m, Lux=%.2f, Cloud Index=%.2f",
                 m->timestamp_utc,
                 m->temperature_c_x100 / 100.0f,
                 m->humidity_x100 / 100.0f,
                 m->pressure_hpa_x100 / 100.0f,
                 m->altitude_m_x10 / 10.0f,
-                m->lux,
-                m->cloud_index 
+                (float)m->lux,
+                (float)m->cloud_index 
             );
 
     return true;
@@ -322,15 +326,27 @@ void handle_state_measure_and_store(void)
 
         measurement_scheduler_acknowledge();
 
+        if(!MEASUREMENT_TIME_SET_PROPERLY){
+            //Measurement time was not set properly, stop current timer -> delete current timer -> set new timer with right interval
+            ESP_ERROR_CHECK(delete_timer());
+
+
+
+
+
+            measurement_scheduler_init(WAKE_INTERVAL_SECONDS);  // WAKE_INTERNAL_SECONDS seconds - 3 minutes
+            MEASUREMENT_TIME_SET_PROPERLY = true;
+        }
+
         perform_measurement(&m); // Read sensors and update global variables
 
         latest_measurement_valid = true;
 
         measurement_store(&m);
 
-        if (measurement_count() < 5) {
+        if (measurement_count() < 5 * BatchCount) {
             // Not enough measurements to upload yet, go back to measuring
-            ESP_LOGI(TAG, "Not enough measurements stored yet for upload (have %d, need 5)", measurement_count());
+            ESP_LOGI(TAG, "Not enough measurements stored yet for upload (have %d, need %d)", measurement_count(), BATCH_SIZE * BatchCount);
             device_state = STATE_DISPLAY;
             return;
         }
@@ -383,19 +399,17 @@ void handle_state_upload(void)
         upload_in_progress = true;
         display_force_update = true;
 
-        upload_result_t res = upload_manager_try_upload_one_batch(BatchCount);
-
-        //Upload worked, set batch counter to 1
-        if( res == UPLOAD_OK)
-            BatchCount = 1;
+        upload_result_t res = upload_manager_try_upload_one_batch(&BatchCount);
 
         //Upload failed, increase attempt count
-        if(res == UPLOAD_SKIPPED || res == UPLOAD_AUTH_ERROR || res == UPLOAD_NET_ERROR || res == UPLOAD_SERVER_ERROR)
+        if(res == UPLOAD_SKIPPED || res == UPLOAD_AUTH_ERROR || res == UPLOAD_NET_ERROR || res == UPLOAD_SERVER_ERROR){
             UploadAttempt++;
-        
+        }
         //Tried to upload 5 or more times, increase needed batch count so it wont get stuck at uploading
-        if(UploadAttempt >= 5)
+        if(UploadAttempt >= 5){
             BatchCount ++;
+            UploadAttempt = 0;
+        }
 
         upload_in_progress = false;
         display_force_update = true;
@@ -445,7 +459,7 @@ void handle_state_display(void)
                     (float)m.temperature_c_x100 / 100.0f,
                     (float)m.humidity_x100  / 100.0f,
                     (float)m.pressure_hpa_x100  / 100.0f,
-                    (float)m.altitude_m_x10  / 100.0f,
+                    (float)m.altitude_m_x10  / 10.0f,
                     (float)m.lux ,
                     (float)m.cloud_index 
                 );
@@ -520,17 +534,33 @@ void app_main(void)
     ssd1306_clear_display(ssd1306_handle, false);
     ssd1306_display_text(ssd1306_handle, 0, "OLED Ready", false);
 
-    TryToConnectToWifi();
+    cause = esp_sleep_get_wakeup_cause();
 
-    TryToSyncTime();
+    //If the wakeup cause is undefined, we have to try to connect to wifi because it is a fresh start, we have to know the time whether the device should sleep or not so we have to connect to wifi.
+    //But if the device wakeup is known and we should sleep, there's no need to try to connect to the wifi because all every fresh start we sync time so there's no need to connect to the wifi every restart
+    if(cause == ESP_SLEEP_WAKEUP_UNDEFINED || !ESP_SHOULD_SLEEP){
+        TryToConnectToWifi();
 
-    // Initialize measurement scheduler to trigger every 30 seconds
+        TryToSyncTime();
+    }
+
+    if(!ESP_SHOULD_SLEEP && wifi_manager_is_connected()){
+        //If the esp should not sleep we need to set up the timer properly, so we check the current time and set a time till the next measurement time
+        int64_t now;
+        time_manager_get_timestamp(&now);
+
+        int64_t next = ((now / WAKE_INTERVAL_SECONDS) + 1) * WAKE_INTERVAL_SECONDS;
+        int64_t sleep_time = next - now;
+
+        measurement_scheduler_init(sleep_time);  // sleep_time seconds - 0 - 3 minutes
+        MEASUREMENT_TIME_SET_PROPERLY = false;
+    }
+
+    // Initialize measurement scheduler to trigger every 180 seconds
     //This part is still questionable because of the deep sleep, if deep sleep is not needed when charging then this code is needed.
-    measurement_scheduler_init(180);  // 180 seconds - 3 mins
+    
 
     PageUpdateTimerStart(30); // Update display every 30 seconds
-
-    cause = esp_sleep_get_wakeup_cause();
 
     //Undefined wakeup cause -> Reset / restart after power loss or power down
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) {

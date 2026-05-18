@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient.js'
 const stationBox = document.getElementById('stationBox')
 const latestMeasurementBox = document.getElementById('latestMeasurement')
 const measurementsBox = document.getElementById('measurements')
+const chartModeSelect = document.getElementById('chartMode')
 
 let weatherChart = null
 
@@ -18,7 +19,7 @@ async function loadStations() {
 
     stationBox.innerHTML = data.map(station => `
         <div class="card">
-            <h2>${station.name}</h2>
+            <h3>${station.name}</h3>
             <p>Állapot: ${station.online ? 'Online' : 'Offline'}</p>
         </div>
     `).join('')
@@ -52,7 +53,7 @@ async function loadMeasurements() {
         latestMeasurementBox.innerHTML = `
             <div class="latest-card">
                 <div class="temperature-big">
-                <span class="label">Hőmérséklet: </span>
+                    <span class="label">Hőmérséklet: </span>
                     ${latest.temperature_c_x100 / 100} °C
                 </div>
 
@@ -97,16 +98,70 @@ async function loadMeasurements() {
             <p><strong>Magasság:</strong> ${m.altitude_m_x10 / 10} m</p>
             <p><strong>Fény:</strong> ${m.lux ?? 'nincs adat'} lux</p>
             <p><strong>Felhő index:</strong> ${m.cloud_index ?? 'nincs adat'}</p>
+            <p><strong>Dátum:</strong> ${
+                m.measured_at
+                    ? new Date(m.measured_at).toLocaleString('hu-HU')
+                    : 'nincs adat'
+            }</p>
         </div>
     `).join('')
 }
 
-async function loadChartData() {
+async function loadChartOptions() {
+    if (!chartModeSelect) return
+
     const { data, error } = await supabase
         .from('measurements')
+        .select('measured_at')
+        .not('measured_at', 'is', null)
+        .order('measured_at', { ascending: false })
+
+    if (error) {
+        console.log('Dátum lista hiba:', error)
+        return
+    }
+
+    const uniqueDates = [...new Set(data.map(m => {
+        const date = new Date(m.measured_at)
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+
+        return `${year}-${month}-${day}`
+    }))]
+
+    chartModeSelect.innerHTML = '<option value="latest30">Elmúlt 30 mérés</option>'
+
+    uniqueDates.forEach(date => {
+        const option = document.createElement('option')
+        option.value = date
+        option.textContent = date
+        chartModeSelect.appendChild(option)
+    })
+}
+
+async function loadChartData() {
+    let query = supabase
+        .from('measurements')
         .select('temperature_c_x100, humidity_x100, measured_at, id')
-        .order('id', { ascending: false })
-        .limit(30)
+
+    if (!chartModeSelect || chartModeSelect.value === 'latest30') {
+        query = query
+            .order('id', { ascending: false })
+            .limit(30)
+    } else {
+        const selectedDate = chartModeSelect.value
+
+        const startDate = new Date(`${selectedDate}T00:00:00`)
+        const endDate = new Date(`${selectedDate}T23:59:59`)
+
+        query = query
+            .gte('measured_at', startDate.toISOString())
+            .lte('measured_at', endDate.toISOString())
+            .order('measured_at', { ascending: true })
+    }
+
+    const { data, error } = await query
 
     if (error) {
         console.log('Chart hiba:', error)
@@ -115,24 +170,43 @@ async function loadChartData() {
 
     if (!data || data.length === 0) {
         console.log('Nincs grafikon adat.')
+
+        if (weatherChart !== null) {
+            weatherChart.destroy()
+            weatherChart = null
+        }
+
         return
     }
 
-    const reversedData = data.reverse()
+    let chartData = data
 
-    const labels = reversedData.map(m => {
+    if (!chartModeSelect || chartModeSelect.value === 'latest30') {
+        chartData = data.reverse()
+    }
+
+    const labels = chartData.map(m => {
         if (m.measured_at) {
-            return new Date(m.measured_at).toLocaleTimeString('hu-HU', {
+            const date = new Date(m.measured_at)
+
+            const day = date.toLocaleDateString('hu-HU', {
+                month: '2-digit',
+                day: '2-digit'
+            })
+
+            const time = date.toLocaleTimeString('hu-HU', {
                 hour: '2-digit',
                 minute: '2-digit'
             })
+
+            return [day, time]
         }
 
-        return `#${m.id}`
+        return [`#${m.id}`]
     })
 
-    const temperatures = reversedData.map(m => m.temperature_c_x100 / 100)
-    const humidities = reversedData.map(m => m.humidity_x100 / 100)
+    const temperatures = chartData.map(m => m.temperature_c_x100 / 100)
+    const humidities = chartData.map(m => m.humidity_x100 / 100)
 
     const ctx = document.getElementById('weatherChart')
 
@@ -150,19 +224,18 @@ async function loadChartData() {
         data: {
             labels: labels,
             datasets: [
-               
                 {
                     label: 'Páratartalom (%)',
                     data: humidities,
                     borderWidth: 2,
                     tension: 0.3
                 },
-                 {
+                {
                     label: 'Hőmérséklet (°C)',
                     data: temperatures,
                     borderWidth: 2,
                     tension: 0.3
-                },
+                }
             ]
         },
         options: {
@@ -184,7 +257,14 @@ async function loadChartData() {
 
 loadStations()
 loadMeasurements()
+loadChartOptions()
 loadChartData()
+
+if (chartModeSelect) {
+    chartModeSelect.addEventListener('change', () => {
+        loadChartData()
+    })
+}
 
 const measurementsChannel = supabase
     .channel('measurements-realtime-channel')
@@ -197,6 +277,7 @@ const measurementsChannel = supabase
         },
         () => {
             loadMeasurements()
+            loadChartOptions()
             loadChartData()
         }
     )

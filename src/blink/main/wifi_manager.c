@@ -158,6 +158,11 @@ int wifi_manager_get_max_retry(void)
 
 int wifi_manager_get_rssi(void)
 {
+    wifi_ap_record_t ap;
+
+    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+        s_rssi = ap.rssi;
+    }
     return s_rssi;
 }
 

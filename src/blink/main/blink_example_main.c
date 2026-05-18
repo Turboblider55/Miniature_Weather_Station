@@ -330,10 +330,6 @@ void handle_state_measure_and_store(void)
             //Measurement time was not set properly, stop current timer -> delete current timer -> set new timer with right interval
             ESP_ERROR_CHECK(delete_timer());
 
-
-
-
-
             measurement_scheduler_init(WAKE_INTERVAL_SECONDS);  // WAKE_INTERNAL_SECONDS seconds - 3 minutes
             MEASUREMENT_TIME_SET_PROPERLY = true;
         }

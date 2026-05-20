@@ -8,8 +8,8 @@
 #include "nvs_flash.h"
 #include "esp_log.h"
 
-#define WIFI_SSID "Cudy-A64C"
-#define WIFI_PASS "99957902"
+#define WIFI_SSID CONFIG_WIFI_SSID
+#define WIFI_PASS CONFIG_WIFI_PASSWORD
 #define WIFI_MAX_RETRY 5
 
 static const char *TAG = "wifi";

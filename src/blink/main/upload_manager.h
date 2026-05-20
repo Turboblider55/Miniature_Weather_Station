@@ -19,8 +19,8 @@ typedef enum {
 /* ---- CONFIG ---- */
 #define BATCH_SIZE 5
 
-#define SUPABASE_URL "https://hzucoiipjnfhnqjxtrgj.supabase.co/rest/v1/measurements"
-#define SUPABASE_API_KEY "sb_publishable_47ApWRf7T1esYfIBUWkRGg_VVbAVhp3"
+#define SUPABASE_URL CONFIG_SUPABASE_URL
+#define SUPABASE_API_KEY CONFIG_SUPABASE_API_KEY
 
 #define STATION_ID 1   // Must exist in your stations table
 #define MAX_BATCH_UPLOAD 4

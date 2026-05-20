@@ -47,9 +47,27 @@ menu "App Confi"
             Define the blinking period in milliseconds.
 
     config SUPABASE_API_KEY
-        string "Supabase API key"
+        string "Supabase API key for measurements endpoint"
+        default "sb_publishable_47ApWRf7T1esYfIBUWkRGg_VVbAVhp3"
+        help
+            Supabase API key for measurements endpoint. Must be a publishable key with insert permissions on the measurements table.
 
     config SUPABASE_URL
-        string "Supabase URL"
+        string "Supabase URL for measurements endpoint"
+        default "https://hzucoiipjnfhnqjxtrgj.supabase.co/rest/v1/measurements"
+        help
+            Supabase URL for measurements endpoint.
+
+    config WIFI_SSID
+        string "WiFi SSID to connect to"
+        default "Cudy-A64C"
+        help
+            WiFi SSID for the network to connect to.
+
+    config WIFI_PASSWORD
+        string "WiFi password to connect to"
+        default "99957902"
+        help
+            WiFi password for the network to connect to.
 
 endmenu

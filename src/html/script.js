@@ -7,6 +7,82 @@ const chartModeSelect = document.getElementById('chartMode')
 
 let weatherChart = null
 
+const chartFields = [
+    {
+        checkboxId: 'chartTemperature',
+        label: 'Hőmérséklet (°C)',
+        field: 'temperature_c_x100',
+        convert: value => value / 100
+    },
+    {
+        checkboxId: 'chartHumidity',
+        label: 'Páratartalom (%)',
+        field: 'humidity_x100',
+        convert: value => value / 100
+    },
+    {
+        checkboxId: 'chartPressure',
+        label: 'Nyomás (hPa)',
+        field: 'pressure_hpa_x100',
+        convert: value => value / 100
+    },
+    {
+        checkboxId: 'chartAqi',
+        label: 'AQI',
+        field: 'aqi',
+        convert: value => value
+    },
+    {
+        checkboxId: 'chartTvoc',
+        label: 'TVOC (ppb)',
+        field: 'tvoc_ppb',
+        convert: value => value
+    },
+    {
+        checkboxId: 'chartEco2',
+        label: 'eCO2 (ppm)',
+        field: 'eco2_ppm',
+        convert: value => value
+    },
+    {
+        checkboxId: 'chartLux',
+        label: 'Fény (lux)',
+        field: 'lux',
+        convert: value => value
+    },
+    {
+        checkboxId: 'chartCloud',
+        label: 'Felhő index',
+        field: 'cloud_index',
+        convert: value => value
+    },
+    {
+        checkboxId: 'chartAltitude',
+        label: 'Magasság (m)',
+        field: 'altitude_m_x10',
+        convert: value => value / 10
+    }
+]
+
+function getSelectedChartFields() {
+    return chartFields.filter(item => {
+        const checkbox = document.getElementById(item.checkboxId)
+        return checkbox && checkbox.checked
+    })
+}
+
+function setupChartCheckboxes() {
+    chartFields.forEach(item => {
+        const checkbox = document.getElementById(item.checkboxId)
+
+        if (checkbox) {
+            checkbox.addEventListener('change', () => {
+                loadChartData()
+            })
+        }
+    })
+}
+
 async function loadStations() {
     const { data, error } = await supabase
         .from('stations')
@@ -41,9 +117,11 @@ async function loadMeasurements() {
 
     if (!data || data.length === 0) {
         measurementsBox.innerHTML = '<p>Nincs mérési adat.</p>'
+
         if (latestMeasurementBox) {
             latestMeasurementBox.innerHTML = '<p>Nincs aktuális mérés.</p>'
         }
+
         return
     }
 
@@ -121,6 +199,8 @@ async function loadChartOptions() {
         return
     }
 
+    const selectedValue = chartModeSelect.value
+
     const uniqueDates = [...new Set(data.map(m => {
         const date = new Date(m.measured_at)
         const year = date.getFullYear()
@@ -138,12 +218,16 @@ async function loadChartOptions() {
         option.textContent = date
         chartModeSelect.appendChild(option)
     })
+
+    if ([...chartModeSelect.options].some(option => option.value === selectedValue)) {
+        chartModeSelect.value = selectedValue
+    }
 }
 
 async function loadChartData() {
     let query = supabase
         .from('measurements')
-        .select('temperature_c_x100, humidity_x100, measured_at, id')
+        .select('*')
 
     if (!chartModeSelect || chartModeSelect.value === 'latest30') {
         query = query
@@ -151,7 +235,6 @@ async function loadChartData() {
             .limit(30)
     } else {
         const selectedDate = chartModeSelect.value
-
         const startDate = new Date(`${selectedDate}T00:00:00`)
         const endDate = new Date(`${selectedDate}T23:59:59`)
 
@@ -185,6 +268,18 @@ async function loadChartData() {
         chartData = data.reverse()
     }
 
+    const selectedFields = getSelectedChartFields()
+
+    if (selectedFields.length === 0) {
+        if (weatherChart !== null) {
+            weatherChart.destroy()
+            weatherChart = null
+        }
+
+        console.log('Nincs kiválasztott adat a grafikonhoz.')
+        return
+    }
+
     const labels = chartData.map(m => {
         if (m.measured_at) {
             const date = new Date(m.measured_at)
@@ -205,8 +300,69 @@ async function loadChartData() {
         return [`#${m.id}`]
     })
 
-    const temperatures = chartData.map(m => m.temperature_c_x100 / 100)
-    const humidities = chartData.map(m => m.humidity_x100 / 100)
+const datasets = selectedFields.map(item => {
+
+    let borderColor = '#64748b'
+
+    switch (item.field) {
+
+        case 'temperature_c_x100':
+            borderColor = '#ef4444'
+            break
+
+        case 'humidity_x100':
+            borderColor = '#3b82f6'
+            break
+
+        case 'pressure_hpa_x100':
+            borderColor = '#10b981'
+            break
+
+        case 'aqi':
+            borderColor = '#f59e0b'
+            break
+
+        case 'tvoc_ppb':
+            borderColor = '#8b5cf6'
+            break
+
+        case 'eco2_ppm':
+            borderColor = '#ec4899'
+            break
+
+        case 'lux':
+            borderColor = '#eab308'
+            break
+
+        case 'cloud_index':
+            borderColor = '#06b6d4'
+            break
+
+        case 'altitude_m_x10':
+            borderColor = '#84cc16'
+            break
+    }
+
+    return {
+        label: item.label,
+
+        data: chartData.map(m => {
+            const value = m[item.field]
+
+            if (value === null || value === undefined || value === -1) {
+                return null
+            }
+
+            return item.convert(value)
+        }),
+
+        borderWidth: 2,
+        tension: 0.3,
+
+        borderColor: borderColor,
+        backgroundColor: borderColor
+    }
+})
 
     const ctx = document.getElementById('weatherChart')
 
@@ -223,20 +379,7 @@ async function loadChartData() {
         type: 'line',
         data: {
             labels: labels,
-            datasets: [
-                {
-                    label: 'Páratartalom (%)',
-                    data: humidities,
-                    borderWidth: 2,
-                    tension: 0.3
-                },
-                {
-                    label: 'Hőmérséklet (°C)',
-                    data: temperatures,
-                    borderWidth: 2,
-                    tension: 0.3
-                }
-            ]
+            datasets: datasets
         },
         options: {
             responsive: true,
@@ -259,6 +402,7 @@ loadStations()
 loadMeasurements()
 loadChartOptions()
 loadChartData()
+setupChartCheckboxes()
 
 if (chartModeSelect) {
     chartModeSelect.addEventListener('change', () => {

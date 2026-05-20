@@ -15,8 +15,7 @@
     <h2>Aktuális mérés</h2>
     <div id="latestMeasurement"></div>
 
-    <h2>Grafikon</h2>
-
+     <h2>Grafikon</h2>
     <div class="chart-controls">
         <label for="chartMode">Grafikon adatai:</label>
 
@@ -25,9 +24,31 @@
         </select>
     </div>
 
+
+    <div class="chart-layout">
     <div class="chart-card">
         <canvas id="weatherChart"></canvas>
     </div>
+
+     
+    <div class="chart-checkboxes">
+        <h3>Adatok</h3>
+
+        <label><input type="checkbox" id="chartTemperature" checked> Hőmérséklet</label>
+        <label><input type="checkbox" id="chartHumidity" checked> Páratartalom</label>
+        <label><input type="checkbox" id="chartPressure"> Nyomás</label>
+        <label><input type="checkbox" id="chartAqi"> AQI</label>
+        <label><input type="checkbox" id="chartTvoc"> TVOC</label>
+        <label><input type="checkbox" id="chartEco2"> eCO2</label>
+        <label><input type="checkbox" id="chartLux"> Fény</label>
+        <label><input type="checkbox" id="chartCloud"> Felhő index</label>
+        <label><input type="checkbox" id="chartAltitude"> Magasság</label>
+    </div>
+</div>
+
+  
+
+
 
     <h2>Legutóbbi mérések</h2>
     <div id="measurements"></div>

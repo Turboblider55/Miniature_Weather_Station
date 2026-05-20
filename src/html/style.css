@@ -12,6 +12,41 @@ h1 {
 h2 {
     margin-top: 30px;
 }
+
+.chart-layout {
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    gap: 20px;
+    align-items: stretch;
+}
+
+.chart-checkboxes {
+    background: white;
+    padding: 20px;
+    border-radius: 16px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.10);
+}
+
+.chart-checkboxes h3 {
+    margin-top: 0;
+}
+
+.chart-checkboxes label {
+    display: block;
+    margin-bottom: 12px;
+    cursor: pointer;
+}
+
+.chart-checkboxes input {
+    margin-right: 8px;
+}
+
+@media (max-width: 900px) {
+    .chart-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
 #latestMeasurement {
     background: linear-gradient(135deg, white);
     color: black;

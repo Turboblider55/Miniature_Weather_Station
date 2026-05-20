@@ -44,6 +44,9 @@
 
 #include "esp_sleep.h"
 
+// Include status LED handling
+#include "status_led.h"
+
 uint16_t tvoc, eco2;
 
 static const char *TAG = "weather_station";
@@ -326,6 +329,8 @@ void handle_state_measure_and_store(void)
 
         measurement_scheduler_acknowledge();
 
+        status_led_set(LED_STATE_MEASURE);
+
         if(!MEASUREMENT_TIME_SET_PROPERLY){
             //Measurement time was not set properly, stop current timer -> delete current timer -> set new timer with right interval
             ESP_ERROR_CHECK(delete_timer());
@@ -365,11 +370,15 @@ void handle_state_upload(void)
                 ESP_LOGW(TAG, "Skipping upload, WiFi not connected");
                 BatchCount++;
                 device_state = STATE_DISPLAY;
+
+                status_led_set(LED_STATE_ERROR);
+
                 return;
             }
         }
 
-        TryToSyncTime();
+        //TryToSyncTime();
+        status_led_set(LED_STATE_UPLOAD);
 
         // ready to upload
         ESP_LOGI(TAG, "Ready to upload measurements (have %d)", measurement_count());
@@ -401,10 +410,17 @@ void handle_state_upload(void)
         if(res == UPLOAD_SKIPPED || res == UPLOAD_AUTH_ERROR || res == UPLOAD_NET_ERROR || res == UPLOAD_SERVER_ERROR){
             UploadAttempt++;
         }
+        else if(res == UPLOAD_OK){
+            UploadAttempt = 0; //Reset attempt count after successful upload
+            status_led_set(LED_STATE_SUCCESS); // Indicate success with LED pattern
+        }
         //Tried to upload 5 or more times, increase needed batch count so it wont get stuck at uploading
         if(UploadAttempt >= 5){
             BatchCount ++;
             UploadAttempt = 0;
+
+            status_led_set(LED_STATE_ERROR); // Indicate error with LED pattern
+
         }
 
         upload_in_progress = false;
@@ -474,9 +490,6 @@ void handle_state_idle(void)
 
         ESP_LOGI(TAG, "Entering pre-sleep display phase");
 
-        // Show final display for a short time
-        vTaskDelay(pdMS_TO_TICKS(DISPLAY_ACTIVE_TIME_MS));
-
         // Configure timer wakeup
 
         int64_t now;
@@ -489,10 +502,15 @@ void handle_state_idle(void)
         if (sleep_time > 5) {
             
             //sleep_time = WAKE_INTERVAL_SECONDS;
-        
+            
             ESP_LOGI(TAG, "Preparing deep sleep for %d seconds", sleep_time);
 
             esp_sleep_enable_timer_wakeup(sleep_time * 1000000ULL);
+
+            // Show final display for a short time
+            vTaskDelay(pdMS_TO_TICKS(DISPLAY_ACTIVE_TIME_MS));
+
+            led_off(); // Ensure LED is off before sleeping
 
             ESP_LOGI(TAG, "Entering deep sleep now...");
             vTaskDelay(pdMS_TO_TICKS(100)); // UART flush safety
@@ -501,6 +519,8 @@ void handle_state_idle(void)
         }
     }
     else{
+        status_led_set(LED_STATE_IDLE);
+
         device_state = STATE_MEASURE;
     }
 }
@@ -509,6 +529,8 @@ void app_main(void)
 {
     //CDC test
     printf("USB CDC test\n");
+
+    status_led_init();
 
     // Initialize I2C bus for OLED (I2C_NUM_0 on pins 11/12)
     i2c_master_bus_config_t i2c_bus_config_oled = {

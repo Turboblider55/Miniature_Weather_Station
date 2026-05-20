@@ -174,7 +174,7 @@ void display_pressure_page(float pressure)
     ssd1306_clear_display(ssd1306_handle, false);
 
     // Draw barometer illustration on the right side (x=70, y=35)
-    int gauge_x = 55;  // Center of gauge
+    int gauge_x = 45;  // Center of gauge
     int gauge_y = 40;   // Center vertically
 
     // Outer circle

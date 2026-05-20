@@ -1,4 +1,4 @@
-menu "Example Configuration"
+menu "App Confi"
 
     orsource "$IDF_PATH/examples/common_components/env_caps/$IDF_TARGET/Kconfig.env_caps"
 
@@ -45,5 +45,11 @@ menu "Example Configuration"
         default 1000
         help
             Define the blinking period in milliseconds.
+
+    config SUPABASE_API_KEY
+        string "Supabase API key"
+
+    config SUPABASE_URL
+        string "Supabase URL"
 
 endmenu

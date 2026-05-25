@@ -1,46 +1,51 @@
-# Mini Weather Station (ESP32)
+## Mini Weather Station (ESP32)
 
-## 📖 Projekt leírás
+### 📖 Projekt leírás
+  
+Ez a projekt egy **miniatűr, önálló működésre képes időjárásállomás**, amely egy ESP32 alapú mikrovezérlő segítségével méri, feldolgozza és továbbítja a környezeti adatokat.
 
-Ez a projekt egy **miniatűr időjárásállomás** fejlesztését célozza, amely egy ESP32 alapú mikrovezérlő segítségével méri és dolgozza fel a környezeti adatokat.
-A rendszer különböző szenzorok segítségével gyűjti az adatokat (például hőmérséklet, páratartalom, légnyomás), majd ezeket feldolgozza és opcionálisan megjeleníti vagy továbbítja.
+A rendszer több szenzort használ (hőmérséklet, páratartalom, légnyomás, fényerő), és az adatokat:
+- kijelzőn jeleníti meg
+- WiFi-n keresztül egy távoli adatbázisba (Supabase) tölti fel
 
-A projekt egyetemi célból készült, és célja a **beágyazott rendszerek, szenzorok és IoT alapú adatgyűjtés** gyakorlati megvalósításának bemutatása.
-
----
-
-## 🎯 Projekt célja
-
-A projekt célja egy kompakt, alacsony fogyasztású időjárásállomás létrehozása, amely:
-
-* képes környezeti adatok mérésére
-* feldolgozza a szenzorokból érkező adatokat
-* lehetőséget biztosít az adatok megjelenítésére és továbbítására
-* bővíthető további szenzorokkal vagy funkciókkal
-
-A projekt emellett demonstrálja a mikrovezérlők és szenzorok együttműködését egy valós alkalmazásban.
+A projekt célja egy **valós, IoT alapú, energiatakarékos adatgyűjtő rendszer** megvalósítása, beleértve a **deep sleep működést és offline adatkezelést**.
 
 ---
 
-## ⚙️ Használt technológiák
+### 🎯 Projekt célja
+  
+A projekt célja egy kompakt, alacsony fogyasztású, robusztus időjárásállomás létrehozása, amely:
 
-### Hardver
-
-* ESP32 mikrovezérlő
-* Környezeti szenzor(ok)
-* opcionális kijelző
-* tápellátás (USB vagy akkumulátor)
-
-### Szoftver
-
-* Arduino / ESP-IDF alapú fejlesztés
-* C / C++ programozás
-* szenzor könyvtárak
-* WiFi kommunikáció
+- képes valós környezeti adatok mérésére
+- az adatokat feldolgozza és validálja
+- több oldalas kijelzőn jeleníti meg az információkat
+- WiFi segítségével adatokat továbbít felhőbe
+- offline módon is működik (adatok lokális tárolása)
+- deep sleep segítségével energiatakarékosan üzemel
+- bővíthető további funkciókkal
 
 ---
 
-## 🏗️ Rendszer architektúra
+### ⚙️ Használt technológiák
+
+#### Hardver
+- ESP32 mikrovezérlő
+- SSD1306 OLED kijelző (I²C)
+- ENS160 + AHT21 szenzor
+- BMP280 szenzor
+- BH1750 szenzor
+- beépített LED státusz visszajelzéshez
+
+#### Szoftver
+- ESP-IDF
+- C
+- FreeRTOS
+- WiFi és HTTP kommunikáció
+- JSON (cJSON)
+
+---
+
+### 🏗️ Rendszer architektúra
 
 A rendszer fő komponensei:
 
@@ -58,64 +63,102 @@ A rendszer fő komponensei:
    * a nyers adatok gyors feldolgozása
    * szükség esetén konverzió vagy szűrés
 
-4. **Adatkimenet**
+4. **Adattárolás (buffer)**
 
-   * kijelzőn való megjelenítés
-   * WiFi-n keresztüli továbbítás távoli szerver felé
+   * mért adatok tárolása lokálisan
+   * előkészítés a tovább küldésre
+
+5. **Kommunikáció**
+
+   * wiFi kommunikáció online adatbázissal
+   * lokális idő lekérése a mérések idejének elmentésére
+
+6. **Megjelenítés**
+
+   * mért adatok megjelenítése a mérőállomás kijelzőjén
+
+7. Energiakezelés
+
+   * mérések közötti alvás (deep sleep) az energia hatékonyság érdekében
+---
+
+### 🔄 Működési folyamat
+
+1. Mikrovezérlő és a mérőeszközök inicializálása
+2. Mérési ciklus elkezdése, időben szinkronizálás
+3. Mérési adatok tárolása
+4. Adatfeltöltés megpróbálása az online adatbázisba
+5. Mérési adatok megjelenítése OLED kijelzőn
+6. Alvás (Deep Sleep)
 
 ---
 
-## 🔄 Működési folyamat
+### 📊 Főbb funkciók
 
-A rendszer működése a következő lépésekből áll:
-
-1. A mikrovezérlő inicializálja a szenzorokat
-2. A rendszer meghatározott időközönként kiolvassa a szenzoradatokat
-3. Az adatok feldolgozásra kerülnek
-4. A feldolgozott adatok megjelennek vagy továbbításra kerülnek
-5. A rendszer új mérési ciklust indít
+- Több szenzor integráció
+- OLED kijelző
+- Saját font rendszer
+- WiFi adatfeltöltés
+- Offline adatbufferelés
+- Batch alapú feltöltés
+- Deep sleep működés
+- LED státusz visszajelzés
 
 ---
 
-## 📂 Projekt struktúra
+### 📂 Projekt struktúra
 
 ```
-project-root
+src/
 │
-├─ src/            # forráskód
+├─ main/
+│  │
+│  ├─ main.c
+│  ├─ display.c / display.h
+│  ├─ measurement.c / measurement.h
+│  ├─ upload_manager.c
+│  ├─ wifi_manager.c
+│  ├─ time_manager.c
+│  ├─ cloudiness.c
+│  ├─ small_text.c / small_text.h
+│  └─ sensor drivers
+│
 ├─ include/        # header fájlok
 ├─ docs/           # dokumentáció
 ├─ hardware/       # kapcsolási rajzok
 └─ README.md
+
 ```
 
 ---
 
-## 🚧 Projekt állapota
+### ⚡ Energiakezelés
 
-A projekt jelenleg **fejlesztés alatt áll**.
-A következő lépések vannak tervben:
-
-* hardver komponensek kiválasztása
-* kapcsolási rajz elkészítése
-* szenzorok integrálása
-* adatgyűjtő program fejlesztése
-* rendszer tesztelése
+Deep sleep alapú működés időzített ébresztéssel.
 
 ---
 
-## 🔧 Továbbfejlesztési lehetőségek
+### 🌐 Hálózati működés
 
-A projekt később az alábbi funkciókkal bővíthető:
-
-* felhő alapú adatmentés
-* webes adatmegjelenítés
-* további meteorológiai szenzorok
-* energiatakarékos működés (deep sleep)
+Automatikus WiFi kezelés és batch feltöltés.
 
 ---
 
-## 📚 Dokumentáció
+### 🚧 Projekt állapota
+
+Funkcionálisan kész.
+
+---
+
+### 🔧 Továbbfejlesztési lehetőségek
+
+- OTA
+- több szenzor
+- UI fejlesztés
+
+---
+
+### 📚 Dokumentáció
 
 A projekthez tartozó részletes dokumentáció a `docs` mappában található, amely tartalmazza:
 
@@ -125,12 +168,6 @@ A projekthez tartozó részletes dokumentáció a `docs` mappában található, 
 
 ---
 
-## 👥 Készítők
+### 📜 Licenc
 
-Egyetemi projekt keretében készült.
-
----
-
-## 📜 Licenc
-
-Ez a projekt oktatási célból készült.
+Oktatási célú projekt.

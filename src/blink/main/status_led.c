@@ -12,7 +12,6 @@ void status_led_init(void)
 
     gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
     
-    ESP_LOGI(LED, "Example configured to blink addressable LED!");
     /* LED strip initialization with the GPIO and pixels number*/
     led_strip_config_t strip_config = {
         .strip_gpio_num = LED_GPIO,

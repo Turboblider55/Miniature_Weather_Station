@@ -168,7 +168,11 @@ esp_err_t bmp280_compensate_pressure(bmp280_handle_t *handle, int32_t adc_P, int
     esp_err_t ret = i2c_master_transmit_receive(handle->dev_handle,
                                      (uint8_t[]){BMP280_REG_STATUS}, 1,
                                      &status, 1, -1);
-    ESP_LOGI(TAG, "BMP280 status: 0x%02X", status);
+    if (ret == ESP_OK) {    
+        ESP_LOGI(TAG, "BMP280 status: 0x%02X", status);
+    } else {
+        ESP_LOGE(TAG, "Failed to read BMP280 status: %s", esp_err_to_name(ret));
+    }
     
 
     int64_t var1, var2;

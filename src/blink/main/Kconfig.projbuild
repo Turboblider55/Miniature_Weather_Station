@@ -1,4 +1,4 @@
-menu "App Confi"
+menu "Weather Station Config"
 
     orsource "$IDF_PATH/examples/common_components/env_caps/$IDF_TARGET/Kconfig.env_caps"
 
@@ -54,7 +54,7 @@ menu "App Confi"
 
     config SUPABASE_URL
         string "Supabase URL for measurements endpoint"
-        default "https://hzucoiipjnfhnqjxtrgj.supabase.co/rest/v1/measurements"
+        default "https://hzucoiipjnfhnqjxtrgj.supabase.co/rest/v1"
         help
             Supabase URL for measurements endpoint.
 
@@ -66,8 +66,14 @@ menu "App Confi"
 
     config WIFI_PASSWORD
         string "WiFi password to connect to"
-        default "99957902"
+        default 99957902
         help
             WiFi password for the network to connect to.
+    
+    config STATION_NAME
+        string "Station name to register in the database"
+        default "MainWeatherStation"
+        help
+            The name of the station to register in the database. This should match a station name in your stations table.
 
 endmenu

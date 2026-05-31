@@ -557,9 +557,11 @@ void app_main(void)
     //If the wakeup cause is undefined, we have to try to connect to wifi because it is a fresh start, we have to know the time whether the device should sleep or not so we have to connect to wifi.
     //But if the device wakeup is known and we should sleep, there's no need to try to connect to the wifi because all every fresh start we sync time so there's no need to connect to the wifi every restart
     if(cause == ESP_SLEEP_WAKEUP_UNDEFINED || !ESP_SHOULD_SLEEP){
-        TryToConnectToWifi();
+        if(TryToConnectToWifi() && TryToSyncTime()){
+            ESP_LOGW(TAG, "Time sync successful, WiFi is connected. Changing online status to true.");
+            upload_manager_set_online_status(true);
+        }
 
-        TryToSyncTime();
     }
 
     if(!ESP_SHOULD_SLEEP && wifi_manager_is_connected()){
@@ -577,7 +579,6 @@ void app_main(void)
     // Initialize measurement scheduler to trigger every 180 seconds
     //This part is still questionable because of the deep sleep, if deep sleep is not needed when charging then this code is needed.
     
-
     PageUpdateTimerStart(30); // Update display every 30 seconds
 
     //Undefined wakeup cause -> Reset / restart after power loss or power down

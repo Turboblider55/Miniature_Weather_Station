@@ -4,18 +4,6 @@
 #include "wifi_manager.h"
 #include "time_manager.h"
 
-#include "esp_http_client.h"
-#include "esp_crt_bundle.h"
-#include "esp_log.h"
-
-#include <string.h>
-#include <stdio.h>
-#include <math.h>
-
-// For JSON construction (optional, can build manually if preferred)
-#include "cJSON.h"
-#include <esp_tls.h>
-
 #define TAG "upload"
 
 static upload_result_t last_upload_result = UPLOAD_SKIPPED;
@@ -27,7 +15,7 @@ upload_result_t upload_manager_get_last_result(void)
 }
 
 
-static bool build_json_payload(char *buf, size_t buf_len, uint32_t count)
+static bool build_json_payload_for_batch(char *buf, size_t buf_len, uint32_t count)
 {
     // size_t offset = 0;
     // offset += snprintf(buf + offset, buf_len - offset, "[");
@@ -64,7 +52,7 @@ static bool build_json_payload(char *buf, size_t buf_len, uint32_t count)
 
     char *json_string = cJSON_Print(root);
     if (!json_string) {
-        ESP_LOGE(TAG, "Failed to print JSON");
+        ESP_LOGE(TAG, "Failed to print JSON for batch");
         cJSON_Delete(root);
         return false;
     }
@@ -76,6 +64,44 @@ static bool build_json_payload(char *buf, size_t buf_len, uint32_t count)
 
     return true;
 }   
+
+static bool build_json_payload_for_station_registration(char *buf, size_t buf_len, const char *station_name)
+{
+    cJSON *obj = cJSON_CreateObject();
+    cJSON_AddStringToObject(obj, "name", station_name);
+
+    char *json_string = cJSON_Print(obj);
+    if (!json_string) {
+        ESP_LOGE(TAG, "Failed to print JSON for station registration");
+        cJSON_Delete(obj);
+        return false;
+    }
+
+    snprintf(buf, buf_len, "%s", json_string);
+    free(json_string);
+    cJSON_Delete(obj);
+
+    return true;
+}
+
+static bool build_json_payload_for_online_status_update(char *buf, size_t buf_len, bool online)
+{
+    cJSON *obj = cJSON_CreateObject();
+    cJSON_AddBoolToObject(obj, "online", online);
+
+    char *json_string = cJSON_Print(obj);
+    if (!json_string) {
+        ESP_LOGE(TAG, "Failed to print JSON for online status update");
+        cJSON_Delete(obj);
+        return false;
+    }
+
+    snprintf(buf, buf_len, "%s", json_string);
+    free(json_string);
+    cJSON_Delete(obj);
+
+    return true;
+}
  
 upload_result_t upload_manager_try_upload_one_batch(int *Batchcount)
 {
@@ -103,7 +129,7 @@ upload_result_t upload_manager_try_upload_one_batch(int *Batchcount)
     
         /* ---- BUILD PAYLOAD ---- */
         static char json[1536];   // safe size for 5 measurements
-        if (!build_json_payload(json, sizeof(json), BATCH_SIZE)) {
+        if (!build_json_payload_for_batch(json, sizeof(json), BATCH_SIZE)) {
             ESP_LOGE(TAG, "Failed to build JSON payload");
             last_upload_result = UPLOAD_UNKNOWN_ERROR;
             return last_upload_result;
@@ -113,9 +139,14 @@ upload_result_t upload_manager_try_upload_one_batch(int *Batchcount)
         
         ESP_LOGI(TAG, "Uploading batch: %s", json);
 
+        char url[256];
+        snprintf(url, sizeof(url),
+                 "%s/measurements",
+                 SUPABASE_URL);
+
         /* ---- HTTP CLIENT CONFIG ---- */
         esp_http_client_config_t config = {
-            .url = SUPABASE_URL,
+            .url = url,
             .method = HTTP_METHOD_POST,
             .timeout_ms = 10000,
             .transport_type = HTTP_TRANSPORT_OVER_SSL,
@@ -206,4 +237,256 @@ upload_result_t upload_manager_try_upload_one_batch(int *Batchcount)
 
   
     return last_upload_result;
+}
+
+esp_err_t upload_manager_register_station(void)
+{
+    if (!wifi_manager_is_connected()) {
+        ESP_LOGW(TAG, "WiFi not connected, cannot register station");
+        return ESP_FAIL;
+    }
+
+    static char url[256];
+
+    snprintf(url, sizeof(url), "%s/stations", SUPABASE_URL);
+
+    ESP_LOGI(TAG, "Registering station with URL: %s", url);
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .method = HTTP_METHOD_POST,
+        .timeout_ms = 8000,
+        .transport_type = HTTP_TRANSPORT_OVER_SSL,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+
+    esp_http_client_set_header(client, "apikey", SUPABASE_API_KEY);
+    esp_http_client_set_header(client, "Authorization","Bearer " SUPABASE_API_KEY);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_header(client, "Prefer", "return=representation");
+    esp_http_client_set_header(client, "Accept-Encoding", "identity");
+    esp_http_client_set_header(client, "User-Agent", "ESP32-weather-station ID: "__STRINGIFY(STATION_ID));
+    esp_http_client_set_header(client, "Connection", "close");
+    esp_http_client_set_header(client, "Accept", "*/*");
+
+    ESP_LOGI(TAG, "Registering station with name '%s'", STATION_NAME);
+
+    static char json[256];
+    if (!build_json_payload_for_station_registration(json, sizeof(json), STATION_NAME)) {
+        ESP_LOGE(TAG, "Failed to build JSON payload for station registration");
+        esp_http_client_cleanup(client);
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Registering station with payload: %s", json);
+
+    esp_http_client_set_post_field(client, json, strlen(json));
+
+    esp_err_t err = esp_http_client_perform(client);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Insert failed");
+        esp_http_client_cleanup(client);
+        return err;
+    }
+    else{
+        ESP_LOGI(TAG, "Station registration HTTP status = %d", esp_http_client_get_status_code(client));
+    }
+
+    int status = esp_http_client_get_status_code(client);
+
+    static char resp[256];
+
+    int total_len = 0;
+    int read_len;
+
+    while ((read_len = esp_http_client_read(client,
+            resp + total_len,
+            sizeof(resp) - total_len - 1)) > 0)
+    {
+        total_len += read_len;
+    }
+
+    resp[total_len] = '\0';
+
+    ESP_LOGI(TAG, "Raw response: %s", resp);
+
+    esp_http_client_cleanup(client);
+
+    if(status != 200 && status != 201 && status != 0 && strlen(resp) < 5){
+        ESP_LOGE(TAG, "Failed to register station, HTTP status = %d", status);
+        return ESP_FAIL;
+    }
+    cJSON *root = cJSON_Parse(resp);
+    if (root && cJSON_GetArraySize(root) > 0) {
+        cJSON *item = cJSON_GetArrayItem(root, 0);
+        cJSON *id = cJSON_GetObjectItem(item, "id");
+        if (cJSON_IsNumber(id)) {
+            STATION_ID = id->valueint;
+        }
+    }
+    cJSON_Delete(root);
+
+    ESP_LOGI(TAG, "Registered station with ID %d", STATION_ID);
+
+    return ESP_OK;
+
+}
+
+esp_err_t upload_manager_set_online_status(bool online)
+{
+    if (!wifi_manager_is_connected()) {
+        ESP_LOGW(TAG, "WiFi not connected, cannot register station");
+        return ESP_FAIL;
+    }
+
+    if (STATION_ID < 0) {
+        fetch_station_id_by_name(STATION_NAME, &STATION_ID);
+        if (STATION_ID < 0) {
+            upload_manager_register_station();
+            if (STATION_ID < 0) {
+                ESP_LOGE(TAG, "Failed to register station, cannot set online status");
+                return ESP_FAIL;
+            }
+        }
+    }
+
+    ESP_LOGI(TAG,"Station ID: %d",STATION_ID);
+
+    ESP_LOGI(TAG, "Setting station %d online status to %s", STATION_ID, online ? "TRUE" : "FALSE");
+
+    static char url[256];
+    snprintf(url, sizeof(url),
+             "%s/stations?id=eq.%d",
+             SUPABASE_URL,
+             STATION_ID);
+
+    ESP_LOGI(TAG, "Updating online status with URL: %s", url);
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .method = HTTP_METHOD_PATCH,
+        .timeout_ms = 8000,
+        .transport_type = HTTP_TRANSPORT_OVER_SSL,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+
+    esp_http_client_set_header(client, "apikey", SUPABASE_API_KEY);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+
+    static char patch_json[128];
+    
+    build_json_payload_for_online_status_update(patch_json, sizeof(patch_json), online);
+
+    ESP_LOGI(TAG, "Updating station online status with payload: %s", patch_json);
+
+    esp_http_client_set_post_field(client, patch_json, strlen(patch_json));
+
+    esp_err_t err = esp_http_client_perform(client);
+
+    esp_http_client_cleanup(client);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to update station online status");
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Station %d online status set to %s", STATION_ID, online ? "TRUE" : "FALSE");
+
+    return ESP_OK;
+}
+
+esp_err_t fetch_station_id_by_name(const char *name, int *station_id)
+{
+    if (!wifi_manager_is_connected()) {
+        ESP_LOGW(TAG, "WiFi not connected, cannot fetch station ID");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Fetching station ID for station '%s'", name);
+
+    static char url[256];
+    snprintf(url, sizeof(url),
+             "%s/stations?name=eq.%s",
+             SUPABASE_URL,
+             name);
+
+    ESP_LOGI(TAG, "Fetching station ID with URL: %s", url);
+
+    esp_http_client_config_t config = {
+        .url = url,
+        .method = HTTP_METHOD_GET,
+        .timeout_ms = 8000,
+        .transport_type = HTTP_TRANSPORT_OVER_SSL,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+    };
+
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+
+    esp_http_client_set_header(client, "apikey", SUPABASE_API_KEY);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_header(client, "Accept", "application/json");
+    esp_http_client_set_header(client, "Authorization","Bearer " SUPABASE_API_KEY);
+    esp_http_client_set_header(client, "Prefer", "return=representation");
+    esp_http_client_set_header(client, "User-Agent", " Requesting station ID for station name: " __STRINGIFY(name));
+    esp_http_client_set_header(client, "Connection", "close");
+    esp_http_client_set_header(client, "Accept", "*/*");
+
+    esp_err_t err = esp_http_client_perform(client);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "GET station failed: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        return err;
+    }
+
+    int status = esp_http_client_get_status_code(client);
+
+    ESP_LOGI(TAG, "HTTP status for station id fetch = %d", status);
+
+    static char resp[256];
+
+    int total_len = 0;
+    int read_len;
+
+    while ((read_len = esp_http_client_read(client,
+            resp + total_len,
+            sizeof(resp) - total_len - 1)) > 0)
+    {
+        total_len += read_len;
+    }
+
+    resp[total_len] = '\0';
+
+    ESP_LOGI(TAG, "Raw response: %s", resp);
+
+    esp_http_client_cleanup(client);
+
+    *station_id = -1;
+
+    if ((status == 200  || status == 201 || status == 0) && strlen(resp) > 5) {
+        /* Parse JSON to extract ID */
+        cJSON *root = cJSON_Parse(resp);
+
+        ESP_LOGI(TAG, "printing json root: %s", cJSON_Print(root));
+
+        if (root && cJSON_GetArraySize(root) > 0) {
+            cJSON *item = cJSON_GetArrayItem(root, 0);
+            cJSON *id = cJSON_GetObjectItem(item, "id");
+            if (cJSON_IsNumber(id)) {
+                *station_id = id->valueint;
+            }
+        }
+        cJSON_Delete(root);
+    }
+
+    if (*station_id < 0) {
+        ESP_LOGW(TAG, "Station '%s' not found", name);
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Fetched station ID %d for station '%s'", *station_id, name);
+    return ESP_OK;
 }

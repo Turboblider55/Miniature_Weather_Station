@@ -14,6 +14,32 @@ upload_result_t upload_manager_get_last_result(void)
     return last_upload_result;
 }
 
+static char response_buffer[256];
+static int response_len = 0;
+
+static esp_err_t http_event_handler(esp_http_client_event_t *evt)
+{
+    switch (evt->event_id)
+    {
+        case HTTP_EVENT_ON_DATA:
+            if (!esp_http_client_is_chunked_response(evt->client)) {
+                int copy_len = evt->data_len;
+
+                if (response_len + copy_len < sizeof(response_buffer)) {
+                    memcpy(response_buffer + response_len,
+                           evt->data,
+                           copy_len);
+                    response_len += copy_len;
+                }
+            }
+            break;
+
+        default:
+            break;
+    }
+    return ESP_OK;
+}
+
 
 static bool build_json_payload_for_batch(char *buf, size_t buf_len, uint32_t count)
 {
@@ -189,17 +215,9 @@ upload_result_t upload_manager_try_upload_one_batch(int *Batchcount)
         int status = esp_http_client_get_status_code(client);
         ESP_LOGI(TAG, "HTTP status = %d", status);
 
-        // Optional: read response body for debugging (Supabase may return useful error info in the body)
-        static char resp_buf[512];
-        int resp_len = esp_http_client_read_response(
-            client,
-            resp_buf,
-            sizeof(resp_buf) - 1
-        );
-
-        if (resp_len > 0) {
-            resp_buf[resp_len] = '\0';  // Null-terminate
-            ESP_LOGW(TAG, "HTTP response body: %s", resp_buf);
+        if (response_len > 0) {
+            response_buffer[response_len] = '\0';  // Null-terminate
+            ESP_LOGW(TAG, "HTTP response body: %s", response_buffer);
         }
         else{
             ESP_LOGW(TAG, "No response body or failed to read");
@@ -258,6 +276,7 @@ esp_err_t upload_manager_register_station(void)
         .timeout_ms = 8000,
         .transport_type = HTTP_TRANSPORT_OVER_SSL,
         .crt_bundle_attach = esp_crt_bundle_attach,
+        .event_handler = http_event_handler,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
@@ -266,6 +285,7 @@ esp_err_t upload_manager_register_station(void)
     esp_http_client_set_header(client, "Authorization","Bearer " SUPABASE_API_KEY);
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_header(client, "Prefer", "return=representation");
+    esp_http_client_set_header(client, "Range", "0-1");
     esp_http_client_set_header(client, "Accept-Encoding", "identity");
     esp_http_client_set_header(client, "User-Agent", "ESP32-weather-station ID: "__STRINGIFY(STATION_ID));
     esp_http_client_set_header(client, "Connection", "close");
@@ -284,6 +304,10 @@ esp_err_t upload_manager_register_station(void)
 
     esp_http_client_set_post_field(client, json, strlen(json));
 
+    //Before calling perform, reset response buffer and length to capture the response in the event handler
+    response_len = 0;
+    memset(response_buffer, 0, sizeof(response_buffer));
+
     esp_err_t err = esp_http_client_perform(client);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Insert failed");
@@ -293,32 +317,22 @@ esp_err_t upload_manager_register_station(void)
     else{
         ESP_LOGI(TAG, "Station registration HTTP status = %d", esp_http_client_get_status_code(client));
     }
+    
+    response_buffer[response_len] = '\0';
+
+    ESP_LOGI(TAG, "Response: %s", response_buffer);
 
     int status = esp_http_client_get_status_code(client);
 
-    static char resp[256];
-
-    int total_len = 0;
-    int read_len;
-
-    while ((read_len = esp_http_client_read(client,
-            resp + total_len,
-            sizeof(resp) - total_len - 1)) > 0)
-    {
-        total_len += read_len;
-    }
-
-    resp[total_len] = '\0';
-
-    ESP_LOGI(TAG, "Raw response: %s", resp);
-
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
 
-    if(status != 200 && status != 201 && status != 0 && strlen(resp) < 5){
+    if(status != 200 && status != 201 && status != 0 && response_len < 5){
         ESP_LOGE(TAG, "Failed to register station, HTTP status = %d", status);
         return ESP_FAIL;
     }
-    cJSON *root = cJSON_Parse(resp);
+
+    cJSON *root = cJSON_Parse(response_buffer);
     if (root && cJSON_GetArraySize(root) > 0) {
         cJSON *item = cJSON_GetArrayItem(root, 0);
         cJSON *id = cJSON_GetObjectItem(item, "id");
@@ -387,6 +401,7 @@ esp_err_t upload_manager_set_online_status(bool online)
 
     esp_err_t err = esp_http_client_perform(client);
 
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
 
     if (err != ESP_OK) {
@@ -422,18 +437,23 @@ esp_err_t fetch_station_id_by_name(const char *name, int *station_id)
         .timeout_ms = 8000,
         .transport_type = HTTP_TRANSPORT_OVER_SSL,
         .crt_bundle_attach = esp_crt_bundle_attach,
+        .event_handler = http_event_handler,
     };
 
     esp_http_client_handle_t client = esp_http_client_init(&config);
 
     esp_http_client_set_header(client, "apikey", SUPABASE_API_KEY);
     esp_http_client_set_header(client, "Content-Type", "application/json");
-    esp_http_client_set_header(client, "Accept", "application/json");
     esp_http_client_set_header(client, "Authorization","Bearer " SUPABASE_API_KEY);
     esp_http_client_set_header(client, "Prefer", "return=representation");
+    esp_http_client_set_header(client, "Range", "0-1");
     esp_http_client_set_header(client, "User-Agent", " Requesting station ID for station name: " __STRINGIFY(name));
     esp_http_client_set_header(client, "Connection", "close");
     esp_http_client_set_header(client, "Accept", "*/*");
+
+    //Before calling perform, reset response buffer and length to capture the response in the event handler
+    response_len = 0;
+    memset(response_buffer, 0, sizeof(response_buffer));
 
     esp_err_t err = esp_http_client_perform(client);
     if (err != ESP_OK) {
@@ -446,29 +466,16 @@ esp_err_t fetch_station_id_by_name(const char *name, int *station_id)
 
     ESP_LOGI(TAG, "HTTP status for station id fetch = %d", status);
 
-    static char resp[256];
-
-    int total_len = 0;
-    int read_len;
-
-    while ((read_len = esp_http_client_read(client,
-            resp + total_len,
-            sizeof(resp) - total_len - 1)) > 0)
-    {
-        total_len += read_len;
-    }
-
-    resp[total_len] = '\0';
-
-    ESP_LOGI(TAG, "Raw response: %s", resp);
-
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
 
     *station_id = -1;
 
-    if ((status == 200  || status == 201 || status == 0) && strlen(resp) > 5) {
+    ESP_LOGI(TAG, "Response for station ID fetch: %s", response_buffer);
+
+    if ((status == 200  || status == 201 || status == 0) && response_len > 5) {
         /* Parse JSON to extract ID */
-        cJSON *root = cJSON_Parse(resp);
+        cJSON *root = cJSON_Parse(response_buffer);
 
         ESP_LOGI(TAG, "printing json root: %s", cJSON_Print(root));
 

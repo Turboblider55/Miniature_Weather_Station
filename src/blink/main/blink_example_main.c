@@ -56,7 +56,7 @@ static bool upload_in_progress = false;
 
 static bool upload_just_happened = false;
 static int upload_status_display_cycles = 0;
-#define UPLOAD_STATUS_DISPLAY_CYCLES 2
+#define UPLOAD_STATUS_DISPLAY_CYCLES 1
 
 #define WAKE_INTERVAL_SECONDS 180
 static bool MEASUREMENT_TIME_SET_PROPERLY = true;
@@ -394,8 +394,8 @@ void handle_state_upload(void)
                 batch[i].humidity_x100 / 100.0f,
                 batch[i].pressure_hpa_x100 / 100.0f,
                 batch[i].altitude_m_x10 / 10.0f,
-                batch[i].lux ,
-                batch[i].cloud_index 
+                (float)batch[i].lux ,
+                (float)batch[i].cloud_index 
             );
         }
 
@@ -416,7 +416,7 @@ void handle_state_upload(void)
         }
         //Tried to upload 5 or more times, increase needed batch count so it wont get stuck at uploading
         if(UploadAttempt >= 5){
-            BatchCount ++;
+            BatchCount++;
             UploadAttempt = 0;
 
             status_led_set(LED_STATE_ERROR); // Indicate error with LED pattern

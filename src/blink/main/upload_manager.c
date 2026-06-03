@@ -94,7 +94,19 @@ static bool build_json_payload_for_batch(char *buf, size_t buf_len, uint32_t cou
 static bool build_json_payload_for_station_registration(char *buf, size_t buf_len, const char *station_name)
 {
     cJSON *obj = cJSON_CreateObject();
+
+    /* Convert timestamp to ISO 8601 string for better readability in Supabase (optional) */
+    char ts_buf[25];
+    struct tm tm_info;
+    int64_t now;
+    time_manager_get_timestamp(&now);
+    time_t t = (time_t)now;
+    gmtime_r(&t, &tm_info);
+
+    strftime(ts_buf, sizeof(ts_buf), "%Y-%m-%dT%H:%M:%SZ", &tm_info);
+
     cJSON_AddStringToObject(obj, "name", station_name);
+    cJSON_AddStringToObject(obj, "online_status_update_time", ts_buf);
 
     char *json_string = cJSON_Print(obj);
     if (!json_string) {
@@ -112,8 +124,21 @@ static bool build_json_payload_for_station_registration(char *buf, size_t buf_le
 
 static bool build_json_payload_for_online_status_update(char *buf, size_t buf_len, bool online)
 {
+    
+    /* Convert timestamp to ISO 8601 string for better readability in Supabase (optional) */
+    char ts_buf[25];
+    struct tm tm_info;
+    int64_t now;
+    time_manager_get_timestamp(&now);
+    time_t t = (time_t)now;
+    gmtime_r(&t, &tm_info);
+
+    strftime(ts_buf, sizeof(ts_buf), "%Y-%m-%dT%H:%M:%SZ", &tm_info);
+    
     cJSON *obj = cJSON_CreateObject();
+    
     cJSON_AddBoolToObject(obj, "online", online);
+    cJSON_AddStringToObject(obj, "online_status_update_time", ts_buf);
 
     char *json_string = cJSON_Print(obj);
     if (!json_string) {
@@ -151,7 +176,8 @@ upload_result_t upload_manager_try_upload_one_batch(int *Batchcount)
         last_upload_result = UPLOAD_SKIPPED;
         return last_upload_result;
     }
-    for(size_t i = 0; i < fmin(MAX_BATCH_UPLOAD,*Batchcount); i++){
+    //The batchcount variable is decreased every time a batch is uploaded, but by adding the loop variable i to the condition, it ensures that
+    for(size_t i = 0; i < fmin(MAX_BATCH_UPLOAD,(*Batchcount + i)); i++){
     
         /* ---- BUILD PAYLOAD ---- */
         static char json[1536];   // safe size for 5 measurements
@@ -250,10 +276,11 @@ upload_result_t upload_manager_try_upload_one_batch(int *Batchcount)
             last_upload_result = UPLOAD_UNKNOWN_ERROR;
             return last_upload_result;
         }
-        *Batchcount -= 1;
+
+        (*Batchcount)--; //Decrease batch count to try uploading the next batch if there are more batches to upload and the current batch was uploaded successfully
     }
 
-  
+    *Batchcount = 1; //Reset batch count after upload to ensure next upload tries to upload at least 5 measurements again, can be set to 0 if you want it to try uploading even if there are less than 5 measurements after the first successful upload, but that might cause more frequent uploads of smaller batches which might not be desired.
     return last_upload_result;
 }
 
@@ -320,7 +347,7 @@ esp_err_t upload_manager_register_station(void)
     
     response_buffer[response_len] = '\0';
 
-    ESP_LOGI(TAG, "Response: %s", response_buffer);
+    ESP_LOGI(TAG, "Registration Response: %s", response_buffer);
 
     int status = esp_http_client_get_status_code(client);
 
@@ -461,6 +488,10 @@ esp_err_t fetch_station_id_by_name(const char *name, int *station_id)
         esp_http_client_cleanup(client);
         return err;
     }
+
+    response_buffer[response_len] = '\0';
+
+    ESP_LOGI(TAG, "Fetching station ID Response: %s", response_buffer);
 
     int status = esp_http_client_get_status_code(client);
 

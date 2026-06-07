@@ -14,7 +14,7 @@ upload_result_t upload_manager_get_last_result(void)
     return last_upload_result;
 }
 
-static char response_buffer[256];
+static char response_buffer[512];
 static int response_len = 0;
 
 static esp_err_t http_event_handler(esp_http_client_event_t *evt)
@@ -22,21 +22,39 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
     switch (evt->event_id)
     {
         case HTTP_EVENT_ON_DATA:
-            if (!esp_http_client_is_chunked_response(evt->client)) {
-                int copy_len = evt->data_len;
 
-                if (response_len + copy_len < sizeof(response_buffer)) {
-                    memcpy(response_buffer + response_len,
-                           evt->data,
-                           copy_len);
-                    response_len += copy_len;
-                }
+            ESP_LOGI(TAG,
+                     "HTTP_EVENT_ON_DATA, len=%d",
+                     evt->data_len);
+
+            if (response_len + evt->data_len <
+                sizeof(response_buffer) - 1)
+            {
+                memcpy(response_buffer + response_len,
+                       evt->data,
+                       evt->data_len);
+
+                response_len += evt->data_len;
+
+                response_buffer[response_len] = '\0';
             }
+            else
+            {
+                ESP_LOGE(TAG,
+                         "Response buffer overflow");
+            }
+
+            break;
+
+        case HTTP_EVENT_ON_FINISH:
+            ESP_LOGI(TAG,
+                     "HTTP_EVENT_ON_FINISH");
             break;
 
         default:
             break;
     }
+
     return ESP_OK;
 }
 
@@ -314,6 +332,7 @@ esp_err_t upload_manager_register_station(void)
     esp_http_client_set_header(client, "Prefer", "return=representation");
     esp_http_client_set_header(client, "Range", "0-1");
     esp_http_client_set_header(client, "Accept-Encoding", "identity");
+    esp_http_client_set_header(client, "HTTP-protocol", "HTTP/1.0"); // Use HTTP/1.0 to avoid chunked responses, if the server supports it, but it might cause issues with some servers that require HTTP/1.1, so use with caution and make sure your server supports it if you enable it.
     esp_http_client_set_header(client, "User-Agent", "ESP32-weather-station ID: "__STRINGIFY(STATION_ID));
     esp_http_client_set_header(client, "Connection", "close");
     esp_http_client_set_header(client, "Accept", "*/*");
@@ -346,7 +365,6 @@ esp_err_t upload_manager_register_station(void)
     }
     
     response_buffer[response_len] = '\0';
-
     ESP_LOGI(TAG, "Registration Response: %s", response_buffer);
 
     int status = esp_http_client_get_status_code(client);
@@ -474,6 +492,9 @@ esp_err_t fetch_station_id_by_name(const char *name, int *station_id)
     esp_http_client_set_header(client, "Authorization","Bearer " SUPABASE_API_KEY);
     esp_http_client_set_header(client, "Prefer", "return=representation");
     esp_http_client_set_header(client, "Range", "0-1");
+    esp_http_client_set_header(client, "HTTP-protocol", "HTTP/1.0"); // Use HTTP/1.0 to avoid chunked responses, if the server supports it, but it might cause issues with some servers that require HTTP/1.1, so use with caution and make sure your server supports it if you enable it.
+    // Setting Accept-Encoding to identity to avoid chunked responses which are currently not fully supported by the response handling code, if the response is chunked, it will be logged but not captured in the response buffer, so the station ID fetch will fail. In a production implementation, you would want to properly handle chunked responses to ensure robustness.
+    esp_http_client_set_header(client, "Accept-Encoding", "identity");
     esp_http_client_set_header(client, "User-Agent", " Requesting station ID for station name: " __STRINGIFY(name));
     esp_http_client_set_header(client, "Connection", "close");
     esp_http_client_set_header(client, "Accept", "*/*");
